@@ -107,7 +107,7 @@ public class NewProjectCreationPage extends WizardNewProjectCreationPage {
 	protected void createFormatGroup(Composite container) {
 		Group group = new Group(container, SWT.NONE);
 		group.setText(PDEUIMessages.NewProjectCreationPage_target);
-		group.setLayout(new GridLayout(2, false));
+		group.setLayout(new GridLayout(3, false));
 		group.setLayoutData(new GridData(GridData.FILL_HORIZONTAL));
 
 		Label label = new Label(group, SWT.NONE);
@@ -122,7 +122,7 @@ public class NewProjectCreationPage extends WizardNewProjectCreationPage {
 		IDialogSettings settings = getDialogSettings();
 		boolean osgiProject = (settings == null) ? false : settings.getBoolean(S_OSGI_PROJECT);
 
-		fEclipseButton = createButton(group, SWT.RADIO, 2, 30);
+		fEclipseButton = createButton(group, SWT.RADIO, 3, 30);
 		fEclipseButton.setText(PDEUIMessages.NewProjectCreationPage_pDependsOnRuntime);
 		fEclipseButton.setSelection(!osgiProject);
 		fEclipseButton.addSelectionListener(widgetSelectedAdapter(e -> updateRuntimeDependency()));
@@ -135,6 +135,8 @@ public class NewProjectCreationPage extends WizardNewProjectCreationPage {
 		fOSGiCombo.setItems(new String[] {ICoreConstants.EQUINOX, PDEUIMessages.NewProjectCreationPage_standard});
 
 		fOSGiCombo.setText(ICoreConstants.EQUINOX);
+		Button button = new Button(group, SWT.CHECK);
+		button.setText("");
 	}
 
 	private void updateRuntimeDependency() {

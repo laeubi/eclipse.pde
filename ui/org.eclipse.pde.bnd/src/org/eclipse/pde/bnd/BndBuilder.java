@@ -11,7 +11,7 @@
  *  Contributors:
  *     Christoph Läubrich - initial API and implementation
  *******************************************************************************/
-package org.eclipse.pde.internal.core.bnd;
+package org.eclipse.pde.bnd;
 
 import aQute.bnd.build.Project;
 import aQute.bnd.build.ProjectBuilder;
@@ -35,7 +35,6 @@ import org.eclipse.core.runtime.jobs.JobChangeAdapter;
 import org.eclipse.osgi.util.NLS;
 import org.eclipse.pde.internal.core.PDECore;
 import org.eclipse.pde.internal.core.PDECoreMessages;
-import org.eclipse.pde.internal.core.natures.BndProject;
 
 public class BndBuilder extends IncrementalProjectBuilder {
 

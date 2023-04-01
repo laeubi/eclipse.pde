@@ -11,7 +11,7 @@
  *  Contributors:
  *     Christoph Läubrich - initial API and implementation
  *******************************************************************************/
-package org.eclipse.pde.internal.core.bnd;
+package org.eclipse.pde.bnd;
 
 import aQute.bnd.build.Project;
 import java.util.Collection;
@@ -34,7 +34,6 @@ import org.eclipse.jdt.core.JavaCore;
 import org.eclipse.pde.internal.core.PDECore;
 import org.eclipse.pde.internal.core.PDECoreMessages;
 import org.eclipse.pde.internal.core.RequiredPluginsClasspathContainer;
-import org.eclipse.pde.internal.core.natures.BndProject;
 
 public class BndResourceChangeListener implements IResourceChangeListener {
 

@@ -11,7 +11,7 @@
  *  Contributors:
  *     Christoph Läubrich - initial API and implementation
  *******************************************************************************/
-package org.eclipse.pde.internal.core.bnd;
+package org.eclipse.pde.bnd;
 
 import aQute.bnd.build.Container;
 import aQute.bnd.build.Container.TYPE;
@@ -39,7 +39,6 @@ import org.eclipse.jdt.core.IJavaProject;
 import org.eclipse.jdt.core.JavaCore;
 import org.eclipse.pde.internal.core.PDECore;
 import org.eclipse.pde.internal.core.annotations.OSGiAnnotationsClasspathContributor;
-import org.eclipse.pde.internal.core.natures.BndProject;
 
 public class BndProjectManager {
 

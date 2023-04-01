@@ -11,7 +11,7 @@
  * Contributors:
  *     Christoph Läubrich - initial API and implementation
  *******************************************************************************/
-package org.eclipse.pde.internal.core.bnd;
+package org.eclipse.pde.bnd;
 
 import aQute.bnd.osgi.Jar;
 import aQute.bnd.osgi.Resource;

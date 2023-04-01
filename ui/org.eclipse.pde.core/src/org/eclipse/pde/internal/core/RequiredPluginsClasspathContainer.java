@@ -48,13 +48,13 @@ import org.eclipse.osgi.service.resolver.ExportPackageDescription;
 import org.eclipse.osgi.service.resolver.HostSpecification;
 import org.eclipse.osgi.service.resolver.ImportPackageSpecification;
 import org.eclipse.osgi.service.resolver.StateHelper;
+import org.eclipse.pde.bnd.BndProjectManager;
 import org.eclipse.pde.core.IClasspathContributor;
 import org.eclipse.pde.core.build.IBuild;
 import org.eclipse.pde.core.build.IBuildEntry;
 import org.eclipse.pde.core.plugin.IPluginModelBase;
 import org.eclipse.pde.core.plugin.PluginRegistry;
 import org.eclipse.pde.internal.build.IBuildPropertiesConstants;
-import org.eclipse.pde.internal.core.bnd.BndProjectManager;
 import org.eclipse.pde.internal.core.ibundle.IBundlePluginModelBase;
 
 public class RequiredPluginsClasspathContainer extends PDEClasspathContainer implements IClasspathContainer {

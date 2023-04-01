@@ -11,14 +11,14 @@
  *  Contributors:
  *     Christoph Läubrich - initial API and implementation
  *******************************************************************************/
-package org.eclipse.pde.internal.core.natures;
+package org.eclipse.pde.bnd;
 
 import aQute.bnd.build.Project;
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.jdt.core.JavaCore;
-import org.eclipse.pde.internal.core.bnd.BndBuilder;
+import org.eclipse.pde.internal.core.natures.BaseProject;
 
 public class BndProject extends BaseProject {
 
