@@ -16,13 +16,16 @@ package org.eclipse.pde.internal.ui.editor.bnd;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import org.eclipse.core.resources.IFile;
 import org.eclipse.core.runtime.CoreException;
+import org.eclipse.jface.text.IDocument;
 import org.eclipse.pde.core.IBaseModel;
 import org.eclipse.pde.core.IModelChangedEvent;
 import org.eclipse.pde.internal.ui.editor.PDEFormEditor;
 import org.eclipse.pde.internal.ui.editor.context.InputContext;
 import org.eclipse.text.edits.TextEdit;
 import org.eclipse.ui.IEditorInput;
+import org.eclipse.ui.IFileEditorInput;
 
 public class BndInputContext extends InputContext {
 	public static final String CONTEXT_ID = "bnd-context"; //$NON-NLS-1$
@@ -39,7 +42,19 @@ public class BndInputContext extends InputContext {
 
 	@Override
 	protected IBaseModel createModel(IEditorInput input) throws CoreException {
-		return new BndModel();
+		IDocument document = getDocumentProvider().getDocument(input);
+		BndModel model;
+		if (input instanceof IFileEditorInput fileInput) {
+			model = new BndModel(document, true);
+			IFile file = fileInput.getFile();
+			model.setUnderlyingResource(file);
+			model.setCharset(Charset.forName(file.getCharset()));
+			model.load();
+		} else {
+			model = new BndModel(document, false);
+			model.setCharset(getDefaultCharset());
+		}
+		return model;
 	}
 
 	@Override
