@@ -113,11 +113,53 @@
                     <id>org.eclipse.ui.views.log</id>
                     <versionRange>0.0.0</versionRange>
                   </requirement>
+                  <requirement>
+                    <type>eclipse-plugin</type>
+                    <id>org.eclipse.jdt.doc.isv</id>
+                    <versionRange>0.0.0</versionRange>
+                  </requirement>
+                   <requirement>
+                    <type>eclipse-plugin</type>
+                    <id>org.eclipse.platform.doc.isv</id>
+                    <versionRange>0.0.0</versionRange>
+                  </requirement>
                   
                 </extraRequirements>
               </dependency-resolution>
             </configuration>
           </plugin>
+          <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>unpack-platform-doc</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>unpack-dependencies</goal>
+                        </goals>
+                        <configuration>
+                            <includeArtifactIds>org.eclipse.platform.doc.isv</includeArtifactIds>
+                            <outputDirectory>
+                                ${project.build.directory}/unpack/org.eclipse.platform.doc.isv
+                            </outputDirectory>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>unpack-jdt-doc</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>unpack-dependencies</goal>
+                        </goals>
+                        <configuration>
+                            <includeArtifactIds>org.eclipse.jdt.doc.isv</includeArtifactIds>
+                            <outputDirectory>
+                                ${project.build.directory}/unpack/org.eclipse.jdt.doc.isv
+                            </outputDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
 <!--          <plugin>-->
 <!--            <groupId>org.apache.maven.plugins</groupId>-->
 <!--            <artifactId>maven-dependency-plugin</artifactId>-->
@@ -190,13 +232,13 @@
 						</links>
 						<offlineLinks>
 							<offlineLink>
-								<url>../../../../../../../org.eclipse.jdt.doc.isv/reference/api</url>
-								<location>https://help.eclipse.org/latest/topic/org.eclipse.jdt.doc.isv/reference/api</location>
-							</offlineLink>
-							<offlineLink>
-								<url>../../../../../../../org.eclipse.platform.doc.isv/reference/api</url>
-								<location>https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.isv/reference/api</location>
-							</offlineLink>
+                                <url>./../../../org.eclipse.platform.doc.isv/reference/api</url>
+                                <location>../../unpack/org.eclipse.platform.doc.isv/reference/api</location>
+                            </offlineLink>
+                            <offlineLink>
+                                <url>./../../../org.eclipse.jdt.doc.isv/reference/api</url>
+                                <location>../../unpack/org.eclipse.jdt.doc.isv/reference/api</location>
+                            </offlineLink>
 						</offlineLinks>
 						<tags>
 							<tag>
