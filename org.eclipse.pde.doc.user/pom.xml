@@ -12,15 +12,43 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <parent>
-    <artifactId>eclipse.platform.common</artifactId>
-    <groupId>eclipse.platform.common</groupId>
+    <groupId>org.eclipse.pde</groupId>
+    <artifactId>eclipse.pde</artifactId>
     <version>4.30.0-SNAPSHOT</version>
-    <relativePath>../../</relativePath>
   </parent>
-  <groupId>org.eclipse.pde</groupId>
   <artifactId>org.eclipse.pde.doc.user</artifactId>
   <version>3.14.2200-SNAPSHOT</version>
   <packaging>eclipse-plugin</packaging>
+  
+    <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-dependency-plugin</artifactId>
+          <executions>
+            <execution>
+              <id>copy</id>
+              <phase>process-resources</phase>
+              <goals>
+                <goal>copy-dependencies</goal>
+              </goals>
+              <configuration>
+                <overwriteReleases>true</overwriteReleases>
+                <overwriteSnapshots>true</overwriteSnapshots>
+              </configuration>
+            </execution>
+          </executions>
+        </plugin>
+        <plugin>
+			<groupId>org.eclipse.tycho.extras</groupId>
+			<artifactId>tycho-document-bundle-plugin</artifactId>
+			<version>${tycho.version}</version>
+		</plugin>
+      </plugins>
+    </pluginManagement>
+  </build>
+  
   <profiles>
     <profile>
       <id>build-docs</id>
@@ -85,6 +113,7 @@
           <plugin>
 				<groupId>org.eclipse.tycho.extras</groupId>
 				<artifactId>tycho-document-bundle-plugin</artifactId>
+				<version>${tycho.version}</version>
 				<executions>
 					<execution>
 						<id>schema-to-html</id>
@@ -94,11 +123,11 @@
 						</goals>
 						<configuration>
 							<manifests>
-								<manifest>${basedir}/${eclipse.pde.ui.ui}/org.eclipse.ui.trace/plugin.xml</manifest>
-								<manifest>${basedir}/${eclipse.pde.ui.ui}/org.eclipse.pde.core/plugin.xml</manifest>
-								<manifest>${basedir}/${eclipse.pde.build}/org.eclipse.pde.build/plugin.xml</manifest>
-								<manifest>${basedir}/${eclipse.pde.ui.ui}/org.eclipse.pde.ui/plugin.xml</manifest>
-								<manifest>${basedir}/${eclipse.pde.ui.ui}/org.eclipse.pde.launching/plugin.xml</manifest>
+								<manifest>${basedir}/../ui/org.eclipse.ui.trace/plugin.xml</manifest>
+								<manifest>${basedir}/../ui/org.eclipse.pde.core/plugin.xml</manifest>
+								<manifest>${basedir}/../build/org.eclipse.pde.build/plugin.xml</manifest>
+								<manifest>${basedir}/../ui/org.eclipse.pde.ui/plugin.xml</manifest>
+								<manifest>${basedir}/../ui/org.eclipse.pde.launching/plugin.xml</manifest>
 							</manifests>
 							<destination>${basedir}/reference/extension-points</destination>
 						</configuration>
