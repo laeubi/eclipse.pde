@@ -15,3 +15,4 @@ Snap.*
 .DS_Store
 .polyglot.*
 pom.tycho
+target/
