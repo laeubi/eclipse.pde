@@ -29,6 +29,7 @@ import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.stream.Collectors;
 
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
@@ -56,10 +57,22 @@ import org.eclipse.pde.core.plugin.IPluginModelBase;
 import org.eclipse.pde.core.plugin.PluginRegistry;
 import org.eclipse.pde.internal.build.IBuildPropertiesConstants;
 import org.eclipse.pde.internal.core.bnd.BndProjectManager;
+import org.eclipse.pde.internal.core.bnd.PDEPluginsContainer;
 import org.eclipse.pde.internal.core.ibundle.IBundlePluginModelBase;
+import org.osgi.resource.Requirement;
+import org.osgi.service.resolver.Resolver;
 
 import aQute.bnd.build.Container;
 import aQute.bnd.build.Project;
+import aQute.bnd.header.Parameters;
+import aQute.bnd.osgi.Constants;
+import aQute.bnd.osgi.Processor;
+import aQute.bnd.osgi.resource.CapReqBuilder;
+import aQute.bnd.osgi.resource.ResourceUtils;
+import aQute.bnd.osgi.resource.ResourceUtils.BundleCap;
+import biz.aQute.resolve.BndResolver;
+import biz.aQute.resolve.ResolveProcess;
+import biz.aQute.resolve.ResolverLogger;
 
 public class RequiredPluginsClasspathContainer extends PDEClasspathContainer implements IClasspathContainer {
 
@@ -204,6 +217,7 @@ public class RequiredPluginsClasspathContainer extends PDEClasspathContainer imp
 			}
 			if (fBuild != null) {
 				addSecondaryDependencies(desc, added, entries);
+				addTestDependencies(desc, added, entries);
 			}
 			addBndClasspath(desc, added, entries);
 
@@ -229,6 +243,41 @@ public class RequiredPluginsClasspathContainer extends PDEClasspathContainer imp
 		} catch (CoreException e) {
 		}
 		return entries;
+	}
+
+	private void addTestDependencies(BundleDescription desc, Set<BundleDescription> added,
+			List<IClasspathEntry> entries) {
+		try {
+			IBuildEntry entry = fBuild.getEntry(IBuildEntry.TEST_REQUIREMENTS);
+			if (entry != null) {
+				List<Requirement> requirements = Arrays.stream(entry.getTokens()).flatMap(token -> {
+					Parameters parameters = new Parameters(token);
+					return CapReqBuilder.getRequirementsFrom(parameters).stream();
+				}).toList();
+				for (Requirement requirement : requirements) {
+					System.out.println("Requires: " + requirement);
+				}
+				// TODO
+				// https://github.com/eclipse-platform/eclipse.platform.releng.aggregator/pull/1538
+				Processor runModel = new Processor();
+				runModel.set(Constants.RUNREQUIRES, Arrays.stream(entry.getTokens()).collect(Collectors.joining(","))); //$NON-NLS-1$
+				ResolverLogger logger = new ResolverLogger();
+				ResolveProcess resolve = new ResolveProcess();
+				Resolver resolver = new BndResolver(logger);
+				resolve.resolveRequired(runModel, null, new PDEPluginsContainer(), resolver, List.of(), logger);
+				Collection<BundleCap> resolvedBundles = resolve.getRequiredResources().stream()
+						.map(ResourceUtils::getBundleCapability).filter(Objects::nonNull).toList();
+				for (BundleCap bundle : resolvedBundles) {
+					// TODO do something with it...
+					System.out
+							.println("Resolved: " + bundle.osgi_wiring_bundle() + " @ " + bundle.bundle_version());
+				}
+			}
+		} catch (Exception e) {
+			// TODO do we want to inform the user about the issue?
+			return;
+		}
+
 	}
 
 	private void addBndClasspath(BundleDescription desc, Set<BundleDescription> added, List<IClasspathEntry> entries) {
