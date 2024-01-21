@@ -26,6 +26,7 @@ import org.eclipse.pde.core.IClasspathContributor;
 import org.eclipse.pde.core.plugin.IPluginModelBase;
 import org.eclipse.pde.core.plugin.PluginRegistry;
 import org.eclipse.pde.internal.core.ClasspathUtilCore;
+import org.osgi.resource.Resource;
 
 /**
  * This makes the <a href=
@@ -43,7 +44,7 @@ public class OSGiAnnotationsClasspathContributor implements IClasspathContributo
 
 	@Override
 	public List<IClasspathEntry> getInitialEntries(BundleDescription project) {
-		IPluginModelBase model = PluginRegistry.findModel(project);
+		IPluginModelBase model = PluginRegistry.findModel((Resource) project);
 		if (model != null) {
 			return ClasspathUtilCore.classpathEntries(annotations()).collect(Collectors.toList());
 		}

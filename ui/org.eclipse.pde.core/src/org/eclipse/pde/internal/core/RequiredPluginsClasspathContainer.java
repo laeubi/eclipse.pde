@@ -58,6 +58,7 @@ import org.eclipse.pde.core.plugin.PluginRegistry;
 import org.eclipse.pde.internal.build.IBuildPropertiesConstants;
 import org.eclipse.pde.internal.core.bnd.BndProjectManager;
 import org.eclipse.pde.internal.core.ibundle.IBundlePluginModelBase;
+import org.osgi.resource.Resource;
 
 import aQute.bnd.build.Container;
 import aQute.bnd.build.Project;
@@ -215,7 +216,7 @@ public class RequiredPluginsClasspathContainer extends PDEClasspathContainer imp
 			for (BundleDescription bundle : map.keySet()) {
 				sortedMap.put(bundle.toString(), bundle);
 			}
-			for (BundleDescription bundle : sortedMap.values()) {
+			for (Resource bundle : sortedMap.values()) {
 				IPluginModelBase model = PluginRegistry.findModel(bundle);
 				if (model != null && model.isEnabled()) {
 					addDependencyViaImportPackage(model.getBundleDescription(), added, map, entries);
@@ -384,7 +385,7 @@ public class RequiredPluginsClasspathContainer extends PDEClasspathContainer imp
 
 	private boolean addPlugin(BundleDescription desc, boolean useInclusions, Map<BundleDescription, List<Rule>> map,
 			List<IClasspathEntry> entries) throws CoreException {
-		IPluginModelBase model = PluginRegistry.findModel(desc);
+		IPluginModelBase model = PluginRegistry.findModel((Resource) desc);
 		if (model == null || !model.isEnabled()) {
 			return false;
 		}
@@ -452,7 +453,7 @@ public class RequiredPluginsClasspathContainer extends PDEClasspathContainer imp
 		}
 	}
 
-	private boolean hasExtensibleAPI(BundleDescription desc) {
+	private boolean hasExtensibleAPI(Resource desc) {
 		IPluginModelBase model = PluginRegistry.findModel(desc);
 		return model != null && ClasspathUtilCore.hasExtensibleAPI(model);
 	}

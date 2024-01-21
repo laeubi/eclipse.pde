@@ -29,7 +29,6 @@ import org.eclipse.jdt.core.IAccessRule;
 import org.eclipse.jdt.core.IClasspathAttribute;
 import org.eclipse.jdt.core.IClasspathEntry;
 import org.eclipse.jdt.core.JavaCore;
-import org.eclipse.osgi.service.resolver.BundleDescription;
 import org.eclipse.pde.core.build.IBuild;
 import org.eclipse.pde.core.build.IBuildModel;
 import org.eclipse.pde.core.plugin.IFragment;
@@ -46,6 +45,7 @@ import org.eclipse.pde.internal.core.ibundle.IBundlePluginModelBase;
 import org.eclipse.pde.internal.core.plugin.Fragment;
 import org.eclipse.pde.internal.core.plugin.Plugin;
 import org.eclipse.pde.internal.core.plugin.PluginBase;
+import org.osgi.resource.Resource;
 
 public class ClasspathUtilCore {
 
@@ -132,7 +132,7 @@ public class ClasspathUtilCore {
 		return false;
 	}
 
-	public static boolean isPatchFragment(BundleDescription desc) {
+	public static boolean isPatchFragment(Resource desc) {
 		IPluginModelBase model = PluginRegistry.findModel(desc);
 		return model instanceof IFragmentModel ? isPatchFragment(((IFragmentModel) model).getFragment()) : false;
 	}
