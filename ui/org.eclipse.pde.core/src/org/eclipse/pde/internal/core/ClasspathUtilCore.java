@@ -30,6 +30,7 @@ import org.eclipse.jdt.core.IClasspathAttribute;
 import org.eclipse.jdt.core.IClasspathEntry;
 import org.eclipse.jdt.core.JavaCore;
 import org.eclipse.pde.core.build.IBuild;
+import org.eclipse.pde.core.build.IBuildEntry;
 import org.eclipse.pde.core.build.IBuildModel;
 import org.eclipse.pde.core.plugin.IFragment;
 import org.eclipse.pde.core.plugin.IFragmentModel;
@@ -88,16 +89,29 @@ public class ClasspathUtilCore {
 				return Stream.empty();
 			}
 			boolean isJarShape = new File(location).isFile();
+			if (isJarShape) {
+				return Stream.of(IPath.fromOSString(location));
+			}
 			IPluginLibrary[] libraries = model.getPluginBase().getLibraries();
-			if (isJarShape || libraries.length == 0) {
+			if (libraries.length == 0) {
+				try {
+					IBuild build = getBuild(model);
+					if (build != null) {
+						return Arrays.stream(build.getBuildEntries())
+								.filter(entry -> entry.getName().startsWith(IBuildEntry.OUTPUT_PREFIX))
+								.flatMap(entry -> Arrays.stream(entry.getTokens()))
+								.map(name -> ClasspathUtilCore.getPath(model, name, isJarShape));
+					}
+				} catch (CoreException e) {
+					// nothing we can do then...
+				}
 				return Stream.of(IPath.fromOSString(location));
 			}
 			return Arrays.stream(libraries).filter(library -> !IPluginLibrary.RESOURCE.equals(library.getType()))
 					.map(library -> {
 						String name = library.getName();
 						String expandedName = ClasspathUtilCore.expandLibraryName(name);
-						IPath path = ClasspathUtilCore.getPath(model, expandedName, isJarShape);
-						return path;
+						return ClasspathUtilCore.getPath(model, expandedName, isJarShape);
 					}).filter(Objects::nonNull);
 		}).map(path -> JavaCore.newLibraryEntry(path, path, IPath.ROOT, new IAccessRule[0], new IClasspathAttribute[0],
 				false));
