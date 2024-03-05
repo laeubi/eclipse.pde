@@ -173,6 +173,7 @@ public class LaunchConfigurationHelper {
 		boolean autostart = configuration.getAttribute(IPDELauncherConstants.DEFAULT_AUTO_START, false);
 		if (properties != null) {
 			addRequiredProperties(properties, productID, bundles, bundlesWithStartLevels, autostart);
+			//TODO automatically add  com.osgifx.console.agent.jar
 		} else {
 			properties = new Properties();
 		}
@@ -244,6 +245,8 @@ public class LaunchConfigurationHelper {
 			properties.setProperty(PROP_OSGI_BUNDLES, computeOSGiBundles(TargetPlatform.getBundleList(), bundles, bundlesWithStartLevels, autoStart));
 		if (!properties.containsKey("osgi.bundles.defaultStartLevel")) //$NON-NLS-1$
 			properties.setProperty("osgi.bundles.defaultStartLevel", "4"); //$NON-NLS-1$ //$NON-NLS-2$
+
+		properties.setProperty("org.eclipse.osgi.internal.framework.forwarder", "1234");
 	}
 
 	/**

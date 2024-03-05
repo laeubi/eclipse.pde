@@ -15,6 +15,11 @@
 package org.eclipse.pde.launching;
 
 import java.io.File;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Map;
@@ -60,6 +65,7 @@ import org.eclipse.pde.internal.launching.launcher.LaunchPluginValidator;
 import org.eclipse.pde.internal.launching.launcher.LauncherUtils;
 import org.eclipse.pde.internal.launching.launcher.VMHelper;
 import org.osgi.framework.Version;
+import org.osgi.framework.dto.BundleDTO;
 
 /**
  * An abstract launch delegate for PDE-based launch configurations
@@ -131,6 +137,8 @@ public abstract class AbstractPDELaunchConfiguration extends LaunchConfiguration
 		return commandLine;
 	}
 
+	private static final String MSG_BUNDLE = "BundleDTO"; //$NON-NLS-1$
+
 	@Override
 	public void launch(ILaunchConfiguration configuration, String mode, ILaunch launch, IProgressMonitor monitor) throws CoreException {
 		fConfigDir = null;
@@ -144,6 +152,50 @@ public abstract class AbstractPDELaunchConfiguration extends LaunchConfiguration
 			}
 			throw e;
 		}
+		Thread thread = new Thread(new Runnable() {
+
+			@Override
+			public void run() {
+				try (ServerSocket socket = new ServerSocket(1234)) {
+					System.out.println("Wait for connection...");
+					Socket accept = socket.accept();
+					try (ObjectInputStream stream = new ObjectInputStream(accept.getInputStream())) {
+						RemoteFrameworkProcess frameworkProcess = new RemoteFrameworkProcess(launch);
+						RemoteFrameworkDebugTarget debugTarget = new RemoteFrameworkDebugTarget(launch, frameworkProcess);
+						int packetSize;
+						while ((packetSize = stream.readInt()) > 0) {
+							String msg = readString(stream);
+							if (MSG_BUNDLE.equals(msg)) {
+								BundleDTO bundleDTO = new BundleDTO();
+								bundleDTO.id = stream.readLong();
+								bundleDTO.state = stream.readInt();
+								bundleDTO.symbolicName = readString(stream);
+								bundleDTO.version = readString(stream);
+								bundleDTO.lastModified = stream.readLong();
+								System.out.println("Got Bundle DTO: " + bundleDTO);
+								debugTarget.addBundle(bundleDTO);
+							} else {
+								//discard any bytes from unkown message...
+								int remain = packetSize - 1 - msg.getBytes(StandardCharsets.UTF_8).length;
+								for (int i = 0; i < remain; i++) {
+									stream.read();
+								}
+							}
+						}
+					}
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			}
+
+			private String readString(ObjectInputStream stream) throws IOException {
+				int length = stream.readInt();
+				return new String(stream.readNBytes(length), StandardCharsets.UTF_8);
+			}
+		});
+		thread.setDaemon(true);
+		thread.start();
 
 		VMRunnerConfiguration runnerConfig = new VMRunnerConfiguration(getMainClass(), getClasspath(configuration));
 		IVMInstall launcher = VMHelper.createLauncher(configuration);
