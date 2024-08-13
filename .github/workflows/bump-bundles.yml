@@ -17,16 +17,8 @@ jobs:
         id: list-bundles
         run: |
           pwd
-          ls
-          directories=($(ls -d */))
-          directories=("${directories[@]%/}")
-          json_array=()
-          for dir in "${directories[@]}"; do
-            json_array+=("\"$dir\"")
-          done
-          json_elements=$(IFS=,; echo "${json_array[*]}")
-          json_output="{ \"bundles\": [$json_elements] }"
-          echo "bundles=$json_output" | tee -a "$GITHUB_OUTPUT"
+          ls -a
+
   update-bundles:
     runs-on: ubuntu-latest
     if: always()
