@@ -1,0 +1,36 @@
+name: Update Bundle Dependencies
+
+on:
+  schedule:
+    - cron:  '0 0 * * *'
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+jobs:
+  list-bundles:
+    runs-on: ubuntu-latest
+    outputs:
+      bundles: ${{ steps.list-bundles.outputs.bundles }}
+    steps:
+      - name: List all bundles
+        id: list-bundles
+        run: |
+          directories=($(ls -d ls -d ui/*/))
+          directories=("${directories[@]%/}")
+          json_array=()
+          for dir in "${directories[@]}"; do
+            json_array+=("\"$dir\"")
+          done
+          json_elements=$(IFS=,; echo "${json_array[*]}")
+          json_output="{ \"bundles\": [$json_elements] }"
+          echo "bundles=$json_output" | tee -a "$GITHUB_OUTPUT"
+  update-bundles:
+    runs-on: ubuntu-latest
+    if: always()
+    needs: list-bundles
+    strategy:
+      matrix: ${{ fromJson(needs.list-bundles.outputs.bundles) }}
+    steps:
+      - name: Update Bundle ${{ matrix.bundles }}
+        run: echo "Hello"
