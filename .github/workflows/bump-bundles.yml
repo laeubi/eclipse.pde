@@ -16,7 +16,7 @@ jobs:
       - name: List all bundles
         id: list-bundles
         run: |
-          directories=($(ls -d ui/*/))
+          directories=($(ls -d */))
           directories=("${directories[@]%/}")
           json_array=()
           for dir in "${directories[@]}"; do
