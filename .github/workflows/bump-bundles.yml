@@ -13,11 +13,32 @@ jobs:
     outputs:
       bundles: ${{ steps.list-bundles.outputs.bundles }}
     steps:
-      - name: List all bundles
-        id: list-bundles
-        run: |
-          pwd
-          ls -a
+    - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+      with:
+        fetch-depth: 0
+        ref: master
+    - name: Set up Maven
+      uses: stCarolas/setup-maven@d6af6abeda15e98926a57b5aa970a96bb37f97d1 # v5
+      with:
+        maven-version: 3.9.7
+    - name: Set up JDK
+      uses: actions/setup-java@99b8673ff64fbf99d8d325f52d9a5bdedb8483e9 # v4.2.1
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: maven
+    - name: List all bundles
+      id: list-bundles
+      run: |
+          directories=($(ls -d ui/*/))
+          directories=("${directories[@]%/}")
+          json_array=()
+          for dir in "${directories[@]}"; do
+            json_array+=("\"$dir\"")
+          done
+          json_elements=$(IFS=,; echo "${json_array[*]}")
+          json_output="{ \"bundles\": [$json_elements] }"
+          echo "bundles=$json_output" | tee -a "$GITHUB_OUTPUT"
 
   update-bundles:
     runs-on: ubuntu-latest
