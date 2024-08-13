@@ -24,7 +24,7 @@ jobs:
           directories=("${directories[@]%/}")
           json_array=()
           for dir in "${directories[@]}"; do
-            if [ -e ${dir}META-INF/MANIFEST.MF ]
+            if [ -e ${dir}/META-INF/MANIFEST.MF ]
             then
               json_array+=("\"$dir\"")
             fi
