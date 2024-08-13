@@ -39,6 +39,7 @@ jobs:
     needs: list-bundles
     strategy:
       matrix: ${{ fromJson(needs.list-bundles.outputs.bundles) }}
+      max-parallel: 2
     steps:
       - name: Update Bundle ${{ matrix.bundles }}
         run: echo "Hello World..."
