@@ -33,4 +33,4 @@ jobs:
       matrix: ${{ fromJson(needs.list-bundles.outputs.bundles) }}
     steps:
       - name: Update Bundle ${{ matrix.bundles }}
-        run: echo "Hello World"
+        run: echo "Hello World..."
