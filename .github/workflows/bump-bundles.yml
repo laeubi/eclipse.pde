@@ -65,7 +65,7 @@ jobs:
         with:
           commit-message: Bump Dependencies of ${{ matrix.bundles }}
           branch: update-mf/${{ matrix.bundles }}
-          title: Bundle Dependencies Version Bumps
+          title: Bundle Dependencies Version Bumps for ${{ matrix.bundles }}
           body: Please review the changes and merge if appropriate, or cherry pick individual updates.
           delete-branch: true
           draft: false
