@@ -8,13 +8,13 @@ Export-Package: org.eclipse.pde.build.internal.tests;x-internal:=true,
  org.eclipse.pde.build.internal.tests.ant;x-internal:=true,
  org.eclipse.pde.build.internal.tests.p2;x-internal:=true,
  org.eclipse.pde.build.tests
-Require-Bundle: org.eclipse.core.runtime,
+Require-Bundle: org.eclipse.core.runtime;bundle-version="[3.31.100,4)",
  org.eclipse.pde.build;bundle-version="[3.12.300,4.0.0)",
- org.eclipse.ant.core,
- org.apache.ant,
- org.eclipse.debug.core,
- org.eclipse.equinox.p2.publisher;bundle-version="1.1.0",
- org.eclipse.equinox.p2.publisher.eclipse;bundle-version="1.0.0"
+ org.eclipse.ant.core;bundle-version="[3.7.400,4)",
+ org.apache.ant;bundle-version="[1.10.14,2)",
+ org.eclipse.debug.core;bundle-version="[3.21.500,4)",
+ org.eclipse.equinox.p2.publisher;bundle-version="[1.9.200,2)",
+ org.eclipse.equinox.p2.publisher.eclipse;bundle-version="[1.6.200,2)"
 Bundle-RequiredExecutionEnvironment: JavaSE-17
 Import-Package: org.eclipse.equinox.frameworkadmin;version="2.0.0",
  org.eclipse.equinox.internal.p2.artifact.repository,
