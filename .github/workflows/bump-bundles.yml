@@ -55,10 +55,10 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
           cache: maven
-      - name: Update Target Platform
+      - name: Update Bundle ${{ matrix.bundles }} 
+        working-directory: ${{ matrix.bundles }} 
         run: >-
-          mvn -f ${{ matrix.bundles }} 
-          org.eclipse.tycho.extras:tycho-version-bump-plugin:4.0.9-SNAPSHOT:update-manifest
+          mvn org.eclipse.tycho.extras:tycho-version-bump-plugin:4.0.9-SNAPSHOT:update-manifest
           -Dtycho.version=4.0.9-SNAPSHOT
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@c5a7806660adbe173f04e3e038b0ccdcd758773c # v6.1.0
