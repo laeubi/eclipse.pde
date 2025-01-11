@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2021 IBM Corporation and others.
+ * Copyright (c) 2000, 2024 IBM Corporation and others.
  *
  * This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License 2.0
@@ -21,6 +21,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -98,7 +99,7 @@ public class BuildScriptGenerator extends AbstractScriptGenerator {
 	/** flag indicating if missing properties file should be logged */
 	private boolean ignoreMissingPropertiesFile = true;
 
-	/** flag indicating if we should generate the plugin & feature versions lists */
+	/** flag indicating if we should generate the plugin and feature versions lists */
 	protected boolean generateVersionsList = false;
 
 	private Properties antProperties = null;
@@ -469,9 +470,10 @@ public class BuildScriptGenerator extends AbstractScriptGenerator {
 		this.children = children;
 	}
 
-	public void setDevEntries(String devEntries) {
-		if (devEntries != null)
+	public void setDevEntries(Path devEntries) {
+		if (devEntries != null) {
 			this.devEntries = new DevClassPathHelper(devEntries);
+		}
 	}
 
 	public void setElements(String[] elements) {
@@ -497,7 +499,7 @@ public class BuildScriptGenerator extends AbstractScriptGenerator {
 	}
 
 	/**
-	 * Whether or not to generate plugin & feature versions lists
+	 * Whether or not to generate plugin and feature versions lists
 	 */
 	public void setGenerateVersionsList(boolean generateVersionsList) {
 		this.generateVersionsList = generateVersionsList;

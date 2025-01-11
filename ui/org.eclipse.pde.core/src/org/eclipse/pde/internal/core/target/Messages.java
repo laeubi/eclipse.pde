@@ -19,7 +19,6 @@ public class Messages extends NLS {
 	private static final String BUNDLE_NAME = "org.eclipse.pde.internal.core.target.Messages"; //$NON-NLS-1$
 	public static String AbstractBundleContainer_1;
 	public static String AbstractBundleContainer_3;
-	public static String AbstractTargetHandle_0;
 	public static String DirectoryBundleContainer_0;
 	public static String DirectoryBundleContainer_1;
 	public static String FeatureBundleContainer_0;
@@ -48,6 +47,8 @@ public class Messages extends NLS {
 	public static String LocalTargetHandle_3;
 	public static String LocalTargetHandle_4;
 	public static String LocalTargetHandle_5;
+	public static String P2TargetUtils_cant_refresh_artifacts;
+	public static String P2TargetUtils_cant_refresh_metadata;
 	public static String P2TargetUtils_ProvisioningSourceTask;
 	public static String ProfileBundleContainer_0;
 	public static String ProfileBundleContainer_2;

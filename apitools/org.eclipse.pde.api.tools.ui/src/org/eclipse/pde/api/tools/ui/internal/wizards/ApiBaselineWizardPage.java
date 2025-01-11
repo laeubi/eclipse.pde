@@ -17,6 +17,7 @@ package org.eclipse.pde.api.tools.ui.internal.wizards;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
+import java.util.List;
 
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.ResourcesPlugin;
@@ -67,12 +68,8 @@ public abstract class ApiBaselineWizardPage extends WizardPage {
 			if (parentElement instanceof IApiComponent) {
 				try {
 					IApiComponent component = (IApiComponent) parentElement;
-					String[] ees = component.getExecutionEnvironments();
-					ArrayList<EEEntry> entries = new ArrayList<>(ees.length);
-					for (String ee : ees) {
-						entries.add(new EEEntry(ee));
-					}
-					return entries.toArray();
+					List<String> ees = component.getExecutionEnvironments();
+					return ees.stream().map(EEEntry::new).toArray();
 				} catch (CoreException e) {
 					ApiPlugin.log(e);
 				}
@@ -85,7 +82,7 @@ public abstract class ApiBaselineWizardPage extends WizardPage {
 			if (element instanceof IApiComponent) {
 				try {
 					IApiComponent component = (IApiComponent) element;
-					return component.getExecutionEnvironments().length > 0;
+					return !component.getExecutionEnvironments().isEmpty();
 				} catch (CoreException e) {
 					ApiPlugin.log(e);
 				}
@@ -110,8 +107,8 @@ public abstract class ApiBaselineWizardPage extends WizardPage {
 	}
 
 	/**
-	 * Operation that creates a new working copy for an {@link IApiProfile} that
-	 * is being edited
+	 * Operation that creates a new working copy for an {@link IApiBaseline}
+	 * that is being edited
 	 */
 	static class WorkingCopyOperation implements IRunnableWithProgress {
 
@@ -149,8 +146,8 @@ public abstract class ApiBaselineWizardPage extends WizardPage {
 		}
 
 		/**
-		 * Returns the newly created {@link IApiProfile} working copy or
-		 * <code>null</code>
+		 * Returns the newly created {@link IApiBaseline} working copy or
+		 * {@code null}
 		 *
 		 * @return the working copy or <code>null</code>
 		 */
@@ -234,7 +231,7 @@ public abstract class ApiBaselineWizardPage extends WizardPage {
 	/**
 	 * Creates or edits the profile and returns it
 	 *
-	 * @return a new {@link IApiProfile} or <code>null</code> if an error was
+	 * @return a new {@link IApiBaseline} or {@code null} if an error was
 	 *         encountered creating the new profile
 	 */
 	public abstract IApiBaseline finish() throws IOException, CoreException;

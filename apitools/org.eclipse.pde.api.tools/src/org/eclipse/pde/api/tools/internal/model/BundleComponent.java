@@ -38,10 +38,8 @@ import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.parsers.SAXParser;
 
 import org.eclipse.core.runtime.CoreException;
-import org.eclipse.core.runtime.FileLocator;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IStatus;
-import org.eclipse.core.runtime.Platform;
 import org.eclipse.core.runtime.Status;
 import org.eclipse.osgi.service.resolver.BundleDescription;
 import org.eclipse.osgi.service.resolver.BundleSpecification;
@@ -75,9 +73,9 @@ import org.eclipse.pde.api.tools.internal.provisional.model.IApiElement;
 import org.eclipse.pde.api.tools.internal.provisional.model.IApiTypeContainer;
 import org.eclipse.pde.api.tools.internal.util.SourceDefaultHandler;
 import org.eclipse.pde.api.tools.internal.util.Util;
+import org.eclipse.pde.internal.core.MinimalState;
 import org.eclipse.pde.internal.core.TargetWeaver;
 import org.eclipse.pde.internal.core.util.ManifestUtils;
-import org.osgi.framework.Bundle;
 import org.osgi.framework.BundleException;
 import org.osgi.framework.Constants;
 import org.osgi.framework.FrameworkUtil;
@@ -104,10 +102,10 @@ public class BundleComponent extends Component {
 	 * creation. Only these headers are maintained in the manifest dictionary to
 	 * reduce footprint.
 	 */
-	private static final String[] MANIFEST_HEADERS = new String[] {
+	private static final List<String> MANIFEST_HEADERS = List.of(
 			IApiCoreConstants.ECLIPSE_SOURCE_BUNDLE,
 			Constants.BUNDLE_CLASSPATH, Constants.BUNDLE_NAME,
-			Constants.BUNDLE_VERSION };
+			Constants.BUNDLE_VERSION);
 
 	/**
 	 * Whether there is an underlying .api_description file
@@ -137,7 +135,7 @@ public class BundleComponent extends Component {
 	/**
 	 * Cached value for the lowest EEs
 	 */
-	private volatile String[] lowestEEs;
+	private volatile List<String> lowestEEs;
 
 	/**
 	 * Flag to know if this component is a binary bundle in the workspace i.e.
@@ -161,7 +159,7 @@ public class BundleComponent extends Component {
 	 * @see #getExecutionEnvironments()
 	 * @see #hasDeclaredRequiredEE(Map)
 	 */
-	private volatile String[] fdeclaredRequiredEE;
+	private volatile List<String> fdeclaredRequiredEE;
 
 	/**
 	 * Constructs a new API component from the specified location in the file
@@ -251,7 +249,7 @@ public class BundleComponent extends Component {
 	 */
 	protected synchronized void doManifestCompaction() {
 		Map<String, String> temp = fManifest;
-		fManifest = new Hashtable<>(MANIFEST_HEADERS.length, 1);
+		fManifest = new Hashtable<>(MANIFEST_HEADERS.size(), 1);
 		for (String header : MANIFEST_HEADERS) {
 			String value = temp.get(header);
 			if (value != null) {
@@ -310,7 +308,9 @@ public class BundleComponent extends Component {
 				BundleDescription bundleDescription = getBundleDescription(manifest, fLocation, fBundleId);
 				fSymbolicName = bundleDescription.getSymbolicName();
 				fVersion = bundleDescription.getVersion();
-				fdeclaredRequiredEE = ManifestUtils.getRequiredExecutionEnvironments(bundleDescription).toArray(String[]::new);
+				fdeclaredRequiredEE = MinimalState.hasDeclaredRequiredEE(manifest)
+						? ManifestUtils.getRequiredExecutionEnvironments(bundleDescription).toList()
+						: List.of();
 				setName(manifest.get(Constants.BUNDLE_NAME));
 				fBundleDescription = bundleDescription;
 			} catch (BundleException e) {
@@ -474,7 +474,6 @@ public class BundleComponent extends Component {
 	 * @param bundle the bundle to load from
 	 * @param packages the complete set of packages names originating from the
 	 *            backing component
-	 * @throws CoreException if an error occurs
 	 */
 	public static void initializeApiDescription(IApiDescription apiDesc, BundleDescription bundle,
 			Set<String> packages) {
@@ -565,7 +564,7 @@ public class BundleComponent extends Component {
 	}
 
 	/**
-	 * @see org.eclipse.pde.api.tools.internal.AbstractApiTypeContainer#createApiTypeContainers()
+	 * @see AbstractApiTypeContainer#createApiTypeContainers()
 	 */
 	@Override
 	protected List<IApiTypeContainer> createApiTypeContainers() throws CoreException {
@@ -811,16 +810,6 @@ public class BundleComponent extends Component {
 		return null;
 	}
 
-	// Content is from 3.125.0.v20240206-1259, id's are from 4.31 release
-	private static final List<String> FIXED_API_DESCRIPTIONS = Arrays.asList(
-			"org.eclipse.swt.win32.win32.x86-64-3.125.0.v20240227-1638", //$NON-NLS-1$
-			"org.eclipse.swt.gtk.linux.x86-64-3.125.0.v20240227-1638", //$NON-NLS-1$
-			"org.eclipse.swt.gtk.linux.ppc64le-3.125.0.v20240227-1638", //$NON-NLS-1$
-			"org.eclipse.swt.gtk.linux.aarch64-3.125.0.v20240227-1638", //$NON-NLS-1$
-			"org.eclipse.swt.cocoa.macosx.aarch64-3.125.0.v20240227-1638", //$NON-NLS-1$
-			"org.eclipse.swt.cocoa.macosx.x86-64-3.125.0.v20240227-1638" //$NON-NLS-1$
-	);
-
 	/**
 	 * Parses a bundle's .api_description XML into a string. The file may be in
 	 * a jar or in a directory at the specified location.
@@ -834,22 +823,13 @@ public class BundleComponent extends Component {
 		InputStream stream = null;
 		String contents;
 		try {
-			String fileName = bundleLocation.getName();
-			String extension = IPath.fromOSString(fileName).getFileExtension();
+			String extension = IPath.fromOSString(bundleLocation.getName()).getFileExtension();
 			if (extension != null && extension.equals("jar") && bundleLocation.isFile()) { //$NON-NLS-1$
-				// TODO: remove this if(FIXED_API_DESCRIPTIONS) branch after switching to 4.32
-				// baseline (assuming it will have proper SWT API descriptions, see
-				// https://github.com/eclipse-pde/eclipse.pde/pull/1191)
-				String bundleAndVersion = fileName.substring(0, fileName.length() - ".jar".length()).replace('_', '-'); //$NON-NLS-1$
-				if (FIXED_API_DESCRIPTIONS.contains(bundleAndVersion)) {
-					stream = loadFixedBundleApiDescription(bundleAndVersion);
-				} else {
-					jarFile = new ZipFile(bundleLocation, ZipFile.OPEN_READ);
-					ZipEntry manifestEntry = jarFile.getEntry(IApiCoreConstants.API_DESCRIPTION_XML_NAME);
-					if (manifestEntry != null) {
-						// new file is present
-						stream = jarFile.getInputStream(manifestEntry);
-					}
+				jarFile = new ZipFile(bundleLocation, ZipFile.OPEN_READ);
+				ZipEntry manifestEntry = jarFile.getEntry(IApiCoreConstants.API_DESCRIPTION_XML_NAME);
+				if (manifestEntry != null) {
+					// new file is present
+					stream = jarFile.getInputStream(manifestEntry);
 				}
 			} else {
 				File file = new File(bundleLocation, IApiCoreConstants.API_DESCRIPTION_XML_NAME);
@@ -869,22 +849,8 @@ public class BundleComponent extends Component {
 		return contents;
 	}
 
-	/**
-	 * See https://github.com/eclipse-platform/eclipse.platform.swt/issues/1093 and
-	 * https://github.com/eclipse-pde/eclipse.pde/issues/1187.
-	 *
-	 * @param bundleAndVersion platform specific bundle name with version
-	 * @return stream opened for reading api description
-	 * @throws IOException
-	 */
-	private static InputStream loadFixedBundleApiDescription(String bundleAndVersion) throws IOException {
-		Bundle bundle = Platform.getBundle("org.eclipse.pde.api.tools"); //$NON-NLS-1$
-		IPath pathInBundle = IPath.fromOSString("fixed_api_descriptions/" + bundleAndVersion + ".api_description"); //$NON-NLS-1$ //$NON-NLS-2$
-		return FileLocator.openStream(bundle, pathInBundle, false);
-	}
-
 	@Override
-	public String[] getExecutionEnvironments() throws CoreException {
+	public List<String> getExecutionEnvironments() throws CoreException {
 		// Return the EE from the description only if explicitly specified in the
 		// manifest.
 		return fdeclaredRequiredEE;
@@ -1081,103 +1047,92 @@ public class BundleComponent extends Component {
 	}
 
 	@Override
-	public String[] getLowestEEs() throws CoreException {
+	public List<String> getLowestEEs() throws CoreException {
 		if (lowestEEs != null) {
 			return lowestEEs;
 		}
-		String[] executionEnvironments = getExecutionEnvironments();
-		String[] ees = computeLowestEEs(executionEnvironments);
+		List<String> executionEnvironments = getExecutionEnvironments();
+		List<String> ees = computeLowestEEs(executionEnvironments);
 		synchronized (this) {
 			lowestEEs = ees;
 			return lowestEEs;
 		}
 	}
 
-	private static String[] computeLowestEEs(String[] executionEnvironments) {
-		String[] temp = null;
-
-		int length = executionEnvironments.length;
-		switch (length) {
-			case 0:
-				return null;
-			case 1:
-				temp = new String[] { executionEnvironments[0] };
-				break;
-			default:
+	private static List<String> computeLowestEEs(List<String> executionEnvironments) {
+		return switch (executionEnvironments.size())
+			{
+			case 0, 1 -> executionEnvironments;
+			default -> {
+				List<String> temp = List.of();
 				int values = ProfileModifiers.NO_PROFILE_VALUE;
-				for (int i = 0; i < length; i++) {
-					values |= ProfileModifiers.getValue(executionEnvironments[i]);
+				for (String ee : executionEnvironments) {
+					values |= ProfileModifiers.getValue(ee);
 				}
 				if (ProfileModifiers.isJRE(values)) {
 					if (ProfileModifiers.isJRE_1_1(values)) {
-						temp = new String[] { ProfileModifiers.JRE_1_1_NAME };
+						temp = List.of(ProfileModifiers.JRE_1_1_NAME);
 					} else if (ProfileModifiers.isJ2SE_1_2(values)) {
-						temp = new String[] { ProfileModifiers.J2SE_1_2_NAME };
+						temp = List.of(ProfileModifiers.J2SE_1_2_NAME);
 					} else if (ProfileModifiers.isJ2SE_1_3(values)) {
-						temp = new String[] { ProfileModifiers.J2SE_1_3_NAME };
+						temp = List.of(ProfileModifiers.J2SE_1_3_NAME);
 					} else if (ProfileModifiers.isJ2SE_1_4(values)) {
-						temp = new String[] { ProfileModifiers.J2SE_1_4_NAME };
+						temp = List.of(ProfileModifiers.J2SE_1_4_NAME);
 					} else if (ProfileModifiers.isJ2SE_1_5(values)) {
-						temp = new String[] { ProfileModifiers.J2SE_1_5_NAME };
+						temp = List.of(ProfileModifiers.J2SE_1_5_NAME);
 					} else if (ProfileModifiers.isJAVASE_1_6(values)) {
-						temp = new String[] { ProfileModifiers.JAVASE_1_6_NAME };
+						temp = List.of(ProfileModifiers.JAVASE_1_6_NAME);
 					} else if (ProfileModifiers.isJAVASE_1_7(values)) {
-						temp = new String[] { ProfileModifiers.JAVASE_1_7_NAME };
+						temp = List.of(ProfileModifiers.JAVASE_1_7_NAME);
 					} else if (ProfileModifiers.isJAVASE_1_8(values)) {
-						temp = new String[] { ProfileModifiers.JAVASE_1_8_NAME };
+						temp = List.of(ProfileModifiers.JAVASE_1_8_NAME);
 					} else {
-						temp = new String[] { ProfileModifiers.JAVASE_9_NAME };
+						temp = List.of(ProfileModifiers.JAVASE_9_NAME);
 					}
 				}
 				if (ProfileModifiers.isCDC_Foundation(values)) {
 					if (ProfileModifiers.isCDC_1_0_FOUNDATION_1_0(values)) {
-						if (temp != null) {
-							temp = new String[] {
-									temp[0],
-									ProfileModifiers.CDC_1_0_FOUNDATION_1_0_NAME };
+						if (!temp.isEmpty()) {
+							temp = List.of(temp.get(0), ProfileModifiers.CDC_1_0_FOUNDATION_1_0_NAME);
 						} else {
-							temp = new String[] { ProfileModifiers.CDC_1_0_FOUNDATION_1_0_NAME };
+							temp = List.of(ProfileModifiers.CDC_1_0_FOUNDATION_1_0_NAME);
 						}
 					} else {
-						if (temp != null) {
-							temp = new String[] {
-									temp[0],
-									ProfileModifiers.CDC_1_1_FOUNDATION_1_1_NAME };
+						if (!temp.isEmpty()) {
+							temp = List.of(temp.get(0), ProfileModifiers.CDC_1_1_FOUNDATION_1_1_NAME);
 						} else {
-							temp = new String[] { ProfileModifiers.CDC_1_1_FOUNDATION_1_1_NAME };
+							temp = List.of(ProfileModifiers.CDC_1_1_FOUNDATION_1_1_NAME);
 						}
 					}
 				}
 				if (ProfileModifiers.isOSGi(values)) {
 					if (ProfileModifiers.isOSGI_MINIMUM_1_0(values)) {
-						if (temp != null) {
-							int tempLength = temp.length;
-							System.arraycopy(temp, 0, (temp = new String[tempLength + 1]), 0, tempLength);
-							temp[tempLength] = ProfileModifiers.OSGI_MINIMUM_1_0_NAME;
+						if (!temp.isEmpty()) {
+							temp = new ArrayList<>(temp);
+							temp.add(ProfileModifiers.OSGI_MINIMUM_1_0_NAME);
 						} else {
-							temp = new String[] { ProfileModifiers.OSGI_MINIMUM_1_0_NAME };
+							temp = List.of(ProfileModifiers.OSGI_MINIMUM_1_0_NAME);
 						}
 					} else if (ProfileModifiers.isOSGI_MINIMUM_1_1(values)) {
-						if (temp != null) {
-							int tempLength = temp.length;
-							System.arraycopy(temp, 0, (temp = new String[tempLength + 1]), 0, tempLength);
-							temp[tempLength] = ProfileModifiers.OSGI_MINIMUM_1_1_NAME;
+						if (!temp.isEmpty()) {
+							temp = new ArrayList<>(temp);
+							temp.add(ProfileModifiers.OSGI_MINIMUM_1_1_NAME);
 						} else {
-							temp = new String[] { ProfileModifiers.OSGI_MINIMUM_1_1_NAME };
+							temp = List.of(ProfileModifiers.OSGI_MINIMUM_1_1_NAME);
 						}
 					} else {
 						// OSGI_MINIMUM_1_2
-						if (temp != null) {
-							int tempLength = temp.length;
-							System.arraycopy(temp, 0, (temp = new String[tempLength + 1]), 0, tempLength);
-							temp[tempLength] = ProfileModifiers.OSGI_MINIMUM_1_2_NAME;
+						if (!temp.isEmpty()) {
+							temp = new ArrayList<>(temp);
+							temp.add(ProfileModifiers.OSGI_MINIMUM_1_2_NAME);
 						} else {
-							temp = new String[] { ProfileModifiers.OSGI_MINIMUM_1_2_NAME };
+							temp = List.of(ProfileModifiers.OSGI_MINIMUM_1_2_NAME);
 						}
 					}
 				}
-		}
-		return temp;
+				yield temp;
+			}
+			};
 	}
 
 	@Override

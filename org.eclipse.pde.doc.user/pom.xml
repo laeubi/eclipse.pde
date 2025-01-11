@@ -14,10 +14,10 @@
   <parent>
     <groupId>org.eclipse.pde</groupId>
     <artifactId>eclipse.pde</artifactId>
-    <version>4.33.0-SNAPSHOT</version>
+    <version>4.35.0-SNAPSHOT</version>
   </parent>
   <artifactId>org.eclipse.pde.doc.user</artifactId>
-  <version>3.16.0-SNAPSHOT</version>
+  <version>3.17.0-SNAPSHOT</version>
   <packaging>eclipse-plugin</packaging>
   
   <properties>
@@ -228,7 +228,7 @@
                   <outputDirectory>${basedir}/reference/api</outputDirectory>
                   <resources>          
                     <resource>
-                      <directory>${project.build.directory}/site/apidocs</directory>
+                      <directory>${project.build.directory}/reports/apidocs</directory>
                     </resource>
                   </resources>
                 </configuration>

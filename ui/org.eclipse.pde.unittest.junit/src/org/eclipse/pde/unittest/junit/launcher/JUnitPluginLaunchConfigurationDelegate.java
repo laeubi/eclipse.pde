@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2021, 2022 Red Hat Inc. and others.
+ * Copyright (c) 2021, 2024 Red Hat Inc. and others.
  *
  * This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License 2.0
@@ -545,8 +545,11 @@ public class JUnitPluginLaunchConfigurationDelegate extends AbstractJavaLaunchCo
 
 		// Specify the output folder names
 		programArgs.add("-dev"); //$NON-NLS-1$
-		programArgs.add(ClasspathHelper.getDevEntriesProperties(
-				getConfigurationDirectory(configuration).toString() + "/dev.properties", fAllBundles)); //$NON-NLS-1$
+		programArgs
+				.add(ClasspathHelper
+						.getDevEntriesProperties(
+								getConfigurationDirectory(configuration).toString() + "/dev.properties", fAllBundles) //$NON-NLS-1$
+						.toUri().toString());
 
 		// Create the .options file if tracing is turned on
 		if (configuration.getAttribute(IPDELauncherConstants.TRACING, false) && !IPDELauncherConstants.TRACING_NONE
@@ -586,9 +589,7 @@ public class JUnitPluginLaunchConfigurationDelegate extends AbstractJavaLaunchCo
 		IVMInstall launcher = VMHelper.createLauncher(configuration);
 		boolean isModular = JavaRuntime.isModularJava(launcher);
 		if (isModular) {
-			String modAllSystem = "--add-modules=ALL-SYSTEM"; //$NON-NLS-1$
-			if (!vmArguments.contains(modAllSystem))
-				vmArguments.add(modAllSystem);
+			VMHelper.addNewArgument(vmArguments, "--add-modules", "ALL-SYSTEM"); //$NON-NLS-1$//$NON-NLS-2$
 		}
 		// if element is a test class annotated with @RunWith(JUnitPlatform.class, we
 		// add this in program arguments

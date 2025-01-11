@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2008, 2020 IBM Corporation and others.
+ * Copyright (c) 2008, 2024 IBM Corporation and others.
  *
  * This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License 2.0
@@ -24,6 +24,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -32,17 +33,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IResource;
-import org.eclipse.core.resources.IResourceProxy;
-import org.eclipse.core.resources.IResourceProxyVisitor;
 import org.eclipse.core.resources.ResourcesPlugin;
-import org.eclipse.core.runtime.Assert;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IConfigurationElement;
 import org.eclipse.core.runtime.IPath;
@@ -59,7 +57,6 @@ import org.eclipse.e4.core.contexts.IEclipseContext;
 import org.eclipse.e4.core.services.events.IEventBroker;
 import org.eclipse.equinox.frameworkadmin.BundleInfo;
 import org.eclipse.equinox.p2.metadata.IInstallableUnit;
-import org.eclipse.equinox.p2.metadata.Version;
 import org.eclipse.osgi.service.datalocation.Location;
 import org.eclipse.osgi.util.NLS;
 import org.eclipse.pde.core.plugin.IPluginModelBase;
@@ -75,6 +72,7 @@ import org.eclipse.pde.internal.core.PDECore;
 import org.eclipse.pde.internal.core.PDEPreferencesManager;
 import org.eclipse.pde.internal.core.TargetDefinitionManager;
 import org.eclipse.pde.internal.core.TargetPlatformHelper;
+import org.eclipse.pde.internal.core.target.IUBundleContainer.UnitDeclaration;
 import org.osgi.service.prefs.BackingStoreException;
 
 /**
@@ -98,44 +96,14 @@ public class TargetPlatformService implements ITargetPlatformService {
 	 * The target definition currently being used as the target platform for
 	 * the workspace.
 	 */
-	private final AtomicReference<ITargetDefinition> fWorkspaceTarget;
+	private final AtomicReference<ITargetDefinition> fWorkspaceTarget = new AtomicReference<>();
 
 	/**
 	 * vm arguments for default target
 	 */
 	private StringBuilder fVMArguments;
 
-	private final EventDispatcher eventSendingJob;
-
-	/**
-	 * Collects target files in the workspace
-	 */
-	static class ResourceProxyVisitor implements IResourceProxyVisitor {
-
-		private final List<IResource> fList;
-
-		protected ResourceProxyVisitor(List<IResource> list) {
-			fList = list;
-		}
-
-		/**
-		 * @see org.eclipse.core.resources.IResourceProxyVisitor#visit(org.eclipse.core.resources.IResourceProxy)
-		 */
-		@Override
-		public boolean visit(IResourceProxy proxy) {
-			if (proxy.getType() == IResource.FILE) {
-				if (ICoreConstants.TARGET_FILE_EXTENSION.equalsIgnoreCase(IPath.fromOSString(proxy.getName()).getFileExtension())) {
-					fList.add(proxy.requestResource());
-				}
-				return false;
-			}
-			return true;
-		}
-	}
-
 	private TargetPlatformService() {
-		fWorkspaceTarget = new AtomicReference<>();
-		eventSendingJob = new EventDispatcher("Sending 'workspace target changed' event", TargetPlatformService.class); //$NON-NLS-1$
 	}
 
 	/**
@@ -158,6 +126,7 @@ public class TargetPlatformService implements ITargetPlatformService {
 		}
 		((AbstractTargetHandle) handle).delete();
 		TargetPlatformHelper.getTargetDefinitionMap().remove(handle);
+		scheduleEvent(TargetEvents.TOPIC_TARGET_DELETED, handle);
 	}
 
 	@Override
@@ -269,21 +238,23 @@ public class TargetPlatformService implements ITargetPlatformService {
 	 * @return all target definition handles in the workspace
 	 */
 	private List<WorkspaceFileTargetHandle> findWorkspaceTargetDefinitions() {
-		List<IResource> files = new ArrayList<>(10);
-		ResourceProxyVisitor visitor = new ResourceProxyVisitor(files);
+		List<IFile> files = new ArrayList<>(10);
 		try {
-			ResourcesPlugin.getWorkspace().getRoot().accept(visitor, IResource.NONE);
+			ResourcesPlugin.getWorkspace().getRoot().accept(proxy -> {
+				if (proxy.getType() == IResource.FILE) {
+					if (ICoreConstants.TARGET_FILE_EXTENSION
+							.equalsIgnoreCase(IPath.fromOSString(proxy.getName()).getFileExtension())) {
+						files.add((IFile) proxy.requestResource());
+					}
+					return false;
+				}
+				return true;
+			}, IResource.NONE);
 		} catch (CoreException e) {
 			PDECore.log(e);
-			return new ArrayList<>(0);
+			return List.of();
 		}
-		Iterator<IResource> iter = files.iterator();
-		List<WorkspaceFileTargetHandle> handles = new ArrayList<>(files.size());
-		while (iter.hasNext()) {
-			IFile file = (IFile) iter.next();
-			handles.add(new WorkspaceFileTargetHandle(file));
-		}
-		return handles;
+		return files.stream().map(WorkspaceFileTargetHandle::new).toList();
 	}
 
 	@Override
@@ -359,71 +330,24 @@ public class TargetPlatformService implements ITargetPlatformService {
 	 */
 	public void setWorkspaceTargetDefinition(ITargetDefinition target, boolean asyncEvents) {
 		ITargetDefinition oldTarget = fWorkspaceTarget.getAndSet(target);
-		boolean changed = !Objects.equals(oldTarget, target);
-		if (changed) {
-			if (asyncEvents) {
-				eventSendingJob.schedule(target);
-			} else {
-				notifyTargetChanged(target);
-			}
+		if (!Objects.equals(oldTarget, target)) {
+			notifyEvent(TargetEvents.TOPIC_WORKSPACE_TARGET_CHANGED, target, asyncEvents);
 		}
 	}
 
-	static void notifyTargetChanged(ITargetDefinition target) {
+	public static void scheduleEvent(String topic, Object data) {
+		notifyEvent(topic, data, true);
+	}
+
+	private static void notifyEvent(String topic, Object data, boolean asyncEvents) {
 		IEclipseContext context = EclipseContextFactory.getServiceContext(PDECore.getDefault().getBundleContext());
 		IEventBroker broker = context.get(IEventBroker.class);
 		if (broker != null) {
-			broker.send(TargetEvents.TOPIC_WORKSPACE_TARGET_CHANGED, target);
-		}
-	}
-
-	static class EventDispatcher extends Job {
-
-		private final ConcurrentLinkedQueue<ITargetDefinition> queue;
-		private final Object myFamily;
-
-		/**
-		 * @param jobName
-		 *            descriptive job name
-		 * @param family
-		 *            non null object to control this job execution
-		 **/
-		public EventDispatcher(String jobName, Object family) {
-			super(jobName);
-			Assert.isNotNull(family);
-			this.myFamily = family;
-			this.queue = new ConcurrentLinkedQueue<>();
-			setSystem(true);
-		}
-
-		@Override
-		public boolean belongsTo(Object family) {
-			return myFamily == family;
-		}
-
-		@Override
-		protected IStatus run(IProgressMonitor monitor) {
-			ITargetDefinition target;
-			while ((target = queue.poll()) != null && !monitor.isCanceled()) {
-				notifyTargetChanged(target);
+			if (asyncEvents) {
+				broker.post(topic, data);
+			} else {
+				broker.send(topic, data);
 			}
-			if (!queue.isEmpty() && !monitor.isCanceled()) {
-				// in case actions got faster scheduled then processed
-				schedule();
-			}
-			if (monitor.isCanceled()) {
-				queue.clear();
-				return Status.CANCEL_STATUS;
-			}
-			return Status.OK_STATUS;
-		}
-
-		/**
-		 * Enqueue a task asynchronously.
-		 **/
-		public void schedule(ITargetDefinition target) {
-			queue.offer(target);
-			schedule(); // will reschedule if already running
 		}
 	}
 
@@ -643,22 +567,23 @@ public class TargetPlatformService implements ITargetPlatformService {
 
 	@Override
 	public ITargetLocation newIULocation(IInstallableUnit[] units, URI[] repositories, int resolutionFlags) {
-		String[] fIds = new String[units.length];
-		Version[] fVersions = new Version[units.length];
-		for (int i = 0; i < units.length; i++) {
-			fIds[i] = units[i].getId();
-			fVersions[i] = units[i].getVersion();
-		}
-		return new IUBundleContainer(fIds, fVersions, repositories, resolutionFlags);
+		Stream<UnitDeclaration> ius = Arrays.stream(units)
+				.map(iu -> UnitDeclaration.create(iu.getId(), iu.getVersion()));
+		return createIUBundleContainer(ius, repositories, resolutionFlags);
 	}
 
 	@Override
 	public ITargetLocation newIULocation(String[] unitIds, String[] versions, URI[] repositories, int resolutionFlags) {
-		Version[] fVersions = new Version[versions.length];
-		for (int i = 0; i < versions.length; i++) {
-			fVersions[i] = Version.create(versions[i]);
+		if (unitIds.length != versions.length) {
+			throw new IllegalArgumentException("Units and versions must have the same length"); //$NON-NLS-1$
 		}
-		return new IUBundleContainer(unitIds, fVersions, repositories, resolutionFlags);
+		Stream<UnitDeclaration> ius = IntStream.range(0, unitIds.length)
+				.mapToObj(i -> UnitDeclaration.parse(unitIds[i], versions[i]));
+		return createIUBundleContainer(ius, repositories, resolutionFlags);
+	}
+
+	private ITargetLocation createIUBundleContainer(Stream<UnitDeclaration> ius, URI[] repos, int resolutionFlags) {
+		return new IUBundleContainer(ius.toList(), repos == null ? List.of() : List.of(repos), resolutionFlags);
 	}
 
 }

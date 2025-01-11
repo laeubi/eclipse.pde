@@ -6,23 +6,23 @@ pipeline {
 		timestamps()
 	}
 	agent {
-		label 'centos-latest-8gb'
+		label 'ubuntu-latest'
 	}
 	tools {
 		maven 'apache-maven-latest'
-		jdk 'temurin-jdk17-latest'
+		jdk 'temurin-jdk21-latest'
 	}
 	stages {
 		stage('Build') {
 			steps {
-				wrap([$class: 'Xvnc', useXauthority: true]) {
+				xvnc(useXauthority: true) {
 					sh """
-						mvn clean verify --batch-mode -Dmaven.repo.local=$WORKSPACE/.m2/repository \
-						-Pbree-libs \
-						-Papi-check \
-						-Pjavadoc \
+					mvn clean verify -Dmaven.repo.local=$WORKSPACE/.m2/repository \
+						--fail-at-end --update-snapshots --batch-mode --no-transfer-progress --show-version --errors \
+						-Pbree-libs -Papi-check -Pjavadoc -Ptck \
 						${env.BRANCH_NAME=='master' ? '-Peclipse-sign': ''} \
-						-Dmaven.test.error.ignore=true -Dmaven.test.failure.ignore=true \
+						-Dcompare-version-with-baselines.skip=false \
+						-Dmaven.test.failure.ignore=true \
 						-Dtycho.debug.artifactcomparator \
 						-Dpde.docs.baselinemode=fail
 					"""

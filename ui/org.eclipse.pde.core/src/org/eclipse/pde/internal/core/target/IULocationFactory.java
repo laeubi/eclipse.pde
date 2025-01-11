@@ -72,11 +72,8 @@ public class IULocationFactory implements ITargetLocationFactory {
 					if (element.getNodeName().equalsIgnoreCase(TargetDefinitionPersistenceHelper.INSTALLABLE_UNIT)) {
 						String id = element.getAttribute(TargetDefinitionPersistenceHelper.ATTR_ID);
 						if (id.length() > 0) {
-							String version = element.getAttribute(TargetDefinitionPersistenceHelper.ATTR_VERSION);
-							if (version.length() > 0) {
-								ids.add(id);
-								versions.add(version);
-							}
+							ids.add(id);
+							versions.add(element.getAttribute(TargetDefinitionPersistenceHelper.ATTR_VERSION));
 						}
 					} else if (element.getNodeName().equalsIgnoreCase(TargetDefinitionPersistenceHelper.REPOSITORY)) {
 						String loc = element.getAttribute(TargetDefinitionPersistenceHelper.LOCATION);
@@ -89,9 +86,6 @@ public class IULocationFactory implements ITargetLocationFactory {
 					}
 				}
 			}
-			String[] iuIDs = ids.toArray(new String[ids.size()]);
-			String[] iuVer = versions.toArray(new String[versions.size()]);
-			URI[] uris = repos.toArray(new URI[repos.size()]);
 
 			int flags = IUBundleContainer.INCLUDE_REQUIRED;
 			if (includeMode != null && includeMode.trim().length() > 0) {
@@ -109,8 +103,8 @@ public class IULocationFactory implements ITargetLocationFactory {
 			} else {
 				flags |= Boolean.parseBoolean(followRepositoryReferences) ? IUBundleContainer.FOLLOW_REPOSITORY_REFERENCES : 0;
 			}
-			return TargetPlatformService.getDefault().newIULocation(iuIDs, iuVer, uris,
-					flags);
+			return TargetPlatformService.getDefault().newIULocation( //
+					ids.toArray(String[]::new), versions.toArray(String[]::new), repos.toArray(URI[]::new), flags);
 		}
 		return null;
 	}

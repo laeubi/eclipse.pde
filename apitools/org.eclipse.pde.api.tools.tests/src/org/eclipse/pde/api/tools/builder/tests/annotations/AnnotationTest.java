@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013, 2018 IBM Corporation and others.
+ * Copyright (c) 2013, 2024 IBM Corporation and others.
  *
  * This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License 2.0
@@ -25,7 +25,6 @@ import org.eclipse.pde.api.tools.builder.tests.ApiBuilderTest;
 import org.eclipse.pde.api.tools.builder.tests.ApiProblem;
 import org.eclipse.pde.api.tools.builder.tests.ApiTestingEnvironment;
 import org.eclipse.pde.api.tools.model.tests.TestSuiteHelper;
-import org.eclipse.pde.api.tools.tests.util.ProjectUtils;
 
 import junit.framework.Test;
 import junit.framework.TestSuite;
@@ -76,11 +75,9 @@ public abstract class AnnotationTest extends ApiBuilderTest {
 		classes.add(ValidEnumAnnotationsTests.class);
 		classes.add(FieldAnnotationTest.class);
 		classes.add(MethodAnnotationTest.class);
-		if (ProjectUtils.isJava8Compatible()) {
-			classes.add(InvalidJava8InterfaceAnnotationTests.class);
-			classes.add(ValidJava8InterfaceAnnotationTests.class);
-			classes.add(Java8TypeAnnotationTests.class);
-		}
+		classes.add(InvalidJava8InterfaceAnnotationTests.class);
+		classes.add(ValidJava8InterfaceAnnotationTests.class);
+		classes.add(Java8TypeAnnotationTests.class);
 
 		return classes.toArray(new Class<?>[classes.size()]);
 	}
@@ -154,10 +151,10 @@ public abstract class AnnotationTest extends ApiBuilderTest {
 
 	/**
 	 * Returns an array composed only of the specified number of
-	 * {@link #PROBLEM_ID}
+	 * {@link #getDefaultProblemId()}
 	 *
-	 * @return an array of {@link #PROBLEM_ID} of the specified size, or an
-	 *         empty array if the specified size is < 1
+	 * @return an array of {@link #getDefaultProblemId()} of the specified size,
+	 *         or an empty array if the specified size is smaller 1
 	 */
 	protected int[] getDefaultProblemSet(int problemcount) {
 		if (problemcount < 1) {
@@ -183,7 +180,7 @@ public abstract class AnnotationTest extends ApiBuilderTest {
 
 	/**
 	 * Deploys a build test for API Javadoc tags using the given source file,
-	 * looking for problems specified from {@link #getExpectedProblemIds()()}
+	 * looking for problems specified from {@link #getExpectedProblemIds()}
 	 *
 	 * @param incremental if an incremental build should take place
 	 * @param usedefault if the default package should be used or not

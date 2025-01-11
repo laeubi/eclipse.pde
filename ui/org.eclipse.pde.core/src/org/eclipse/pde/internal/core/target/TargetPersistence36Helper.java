@@ -41,7 +41,7 @@ public class TargetPersistence36Helper {
 
 	/* Example of Software location in Target XML
 
-	<?xml version="1.0" encoding="UTF-8"?><?pde version="3.6"?><target name="SoftwareSiteTarget" sequenceNumber="6">
+	<?xml version="1.0" encoding="UTF-8"?><?pde version="3.6"?><target name="SoftwareSiteTarget">
 	<locations>
 	<location includeAllPlatforms="false" includeMode="slicer" includeSource="true" type="InstallableUnit">
 	<unit id="org.eclipse.egit.feature.group" version="0.11.3"/>
@@ -164,14 +164,6 @@ public class TargetPersistence36Helper {
 					definition.setImplicitDependencies(implicit.toArray(new NameVersionDescriptor[implicit.size()]));
 				}
 			}
-		}
-
-		// Set the sequence number at the very end
-		String sequenceNumber = root.getAttribute(TargetDefinitionPersistenceHelper.ATTR_SEQUENCE_NUMBER);
-		try {
-			((TargetDefinition) definition).setSequenceNumber(Integer.parseInt(sequenceNumber));
-		} catch (NumberFormatException e) {
-			((TargetDefinition) definition).setSequenceNumber(0);
 		}
 	}
 

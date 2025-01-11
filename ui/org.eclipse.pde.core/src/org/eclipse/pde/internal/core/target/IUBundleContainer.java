@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2009, 2021 IBM Corporation and others.
+ * Copyright (c) 2009, 2024 IBM Corporation and others.
  *
  * This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License 2.0
@@ -15,6 +15,7 @@
  *     Manumitting Technologies Inc - bug 437726: wrong error messages opening target definition
  *     Alexander Fedorov (ArSysOp) - Bug 542425, Bug 574629
  *     Christoph Läubrich - Bug 568865 - [target] add advanced editing capabilities for custom target platforms
+ *     Hannes Wellmann - Support no version and version ranges in target definitions
  *******************************************************************************/
 package org.eclipse.pde.internal.core.target;
 
@@ -22,18 +23,20 @@ import java.io.File;
 import java.io.StringWriter;
 import java.net.URI;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.IntStream;
+import java.util.stream.Collectors;
 
 import javax.xml.transform.OutputKeys;
 import javax.xml.transform.Transformer;
@@ -54,6 +57,7 @@ import org.eclipse.equinox.p2.engine.IProfile;
 import org.eclipse.equinox.p2.metadata.IArtifactKey;
 import org.eclipse.equinox.p2.metadata.IInstallableUnit;
 import org.eclipse.equinox.p2.metadata.Version;
+import org.eclipse.equinox.p2.metadata.VersionRange;
 import org.eclipse.equinox.p2.query.IQuery;
 import org.eclipse.equinox.p2.query.IQueryResult;
 import org.eclipse.equinox.p2.query.IQueryable;
@@ -75,6 +79,68 @@ import org.w3c.dom.Element;
  * @since 3.5
  */
 public class IUBundleContainer extends AbstractBundleContainer {
+
+	record UnitDeclaration(String id, VersionRange version, boolean hasVersion) {
+		private static final String EMPTY_VERSION = Version.emptyVersion.toString();
+
+		static UnitDeclaration parse(String id, String version) {
+			version = version.strip();
+			if (version.isEmpty() || version.equals(EMPTY_VERSION)) {
+				return new UnitDeclaration(id, VersionRange.emptyRange, !version.isEmpty());
+			} else if (version.contains(",")) { //$NON-NLS-1$
+				return new UnitDeclaration(id, VersionRange.create(version), true);
+			} else {
+				return create(id, Version.parseVersion(version));
+			}
+		}
+
+		static UnitDeclaration create(String id, Version version) {
+			VersionRange range = new VersionRange(version, true, version, true);
+			return new UnitDeclaration(id, range, true);
+		}
+
+		UnitDeclaration {
+			Objects.requireNonNull(id);
+			Objects.requireNonNull(version);
+		}
+
+		private boolean hasSingleVersion() {
+			return hasEmptyVersion() || (version.getMaximum().equals(version.getMinimum())
+					&& version.getIncludeMinimum() && version.getIncludeMaximum());
+		}
+
+		private boolean hasEmptyVersion() {
+			return version.equals(VersionRange.emptyRange);
+		}
+
+		Version getSingleVersion() {
+			if (!hasSingleVersion()) {
+				throw new IllegalStateException("Declaration does not have a single version"); //$NON-NLS-1$
+			}
+			return version.getMinimum();
+		}
+
+		IQuery<IInstallableUnit> createIUQuery() {
+			// For versions such as 0.0.0 or ranges, the IU query may return
+			// multiple IUs, so we check which is the latest version.
+			if (hasEmptyVersion()) {
+				return createLatestIUQuery(id);
+			} else if (hasSingleVersion()) {
+				return QueryUtil.createIUQuery(id, version.getMinimum());
+			} else { // version range
+				return QueryUtil.createLatestQuery(QueryUtil.createIUQuery(id, version));
+			}
+		}
+
+		String versionString() {
+			return hasSingleVersion() ? version.getMinimum().toString() : version.toString();
+		}
+
+		@Override
+		public String toString() {
+			return hasEmptyVersion() ? id : id + '/' + versionString();
+		}
+	}
 
 	/**
 	 * Constant describing the type of bundle container
@@ -111,32 +177,21 @@ public class IUBundleContainer extends AbstractBundleContainer {
 	 */
 	public static final int INCLUDE_CONFIGURE_PHASE = 1 << 3;
 
-
 	/**
 	 * Whether this container should follow repository references.
 	 */
 	public static final int FOLLOW_REPOSITORY_REFERENCES = 1 << 4;
 
-	/**
-	 * IU identifiers.
-	 */
-	private String[] fIds;
+	/** The list of id+version of all root units declared in this container. */
+	private final Set<UnitDeclaration> fIUs;
+
+	/** Cached IU's referenced by this bundle container . */
+	private Map<IInstallableUnit, UnitDeclaration> fUnits = Map.of();
 
 	/**
-	 * IU versions
+	 * Repositories to consider, empty if default.
 	 */
-	private Version[] fVersions;
-
-	/**
-	 * Cached IU's referenced by this bundle container, or <code>null</code> if not
-	 * resolved.
-	 */
-	private IInstallableUnit[] fUnits;
-
-	/**
-	 * Repositories to consider, or <code>null</code> if default.
-	 */
-	private final URI[] fRepos;
+	private final List<URI> fRepos;
 
 	/**
 	 * A set of bitmask flags that indicate how this container gets elements from its
@@ -158,10 +213,8 @@ public class IUBundleContainer extends AbstractBundleContainer {
 	/**
 	 * Constructs a installable unit bundle container for the specified units.
 	 *
-	 * @param ids
-	 *            IU identifiers
-	 * @param versions
-	 *            IU versions
+	 * @param units
+	 *            the units composed of their identifier and version
 	 * @param repositories
 	 *            metadata repositories used to search for IU's or
 	 *            <code>null</code> for default set
@@ -173,15 +226,10 @@ public class IUBundleContainer extends AbstractBundleContainer {
 	 *            {@link IUBundleContainer#INCLUDE_CONFIGURE_PHASE},
 	 *            {@link IUBundleContainer#FOLLOW_REPOSITORY_REFERENCES}
 	 */
-	IUBundleContainer(String[] ids, Version[] versions, URI[] repositories, int resolutionFlags) {
-		fIds = ids;
+	IUBundleContainer(List<UnitDeclaration> units, List<URI> repositories, int resolutionFlags) {
+		fIUs = new LinkedHashSet<>(units);
 		fFlags = resolutionFlags;
-		fVersions = versions;
-		if (repositories == null || repositories.length == 0) {
-			fRepos = null;
-		} else {
-			fRepos = repositories;
-		}
+		fRepos = List.copyOf(repositories);
 	}
 
 	@Override
@@ -219,7 +267,7 @@ public class IUBundleContainer extends AbstractBundleContainer {
 	 * NOTE: this method expects the synchronizer to be synchronized and is called
 	 * as a result of a synchronization operation.
 	 */
-	TargetFeature[] cacheFeatures(ITargetDefinition target) throws CoreException {
+	private void cacheFeatures(ITargetDefinition target) throws CoreException {
 		// Ideally we would compute the list of features specific to this container but that
 		// would require running the slicer again to follow the dependencies from this
 		// container's roots.  Instead, here we find all features in the shared profile.  This means
@@ -229,7 +277,7 @@ public class IUBundleContainer extends AbstractBundleContainer {
 		Set<NameVersionDescriptor> features = new HashSet<>();
 		IQueryResult<IInstallableUnit> queryResult = fSynchronizer.getProfile().query(QueryUtil.createIUAnyQuery(), null);
 		if (queryResult.isEmpty()) {
-			return new TargetFeature[0];
+			return;
 		}
 
 		for (IInstallableUnit unit : queryResult) {
@@ -243,7 +291,7 @@ public class IUBundleContainer extends AbstractBundleContainer {
 			}
 		}
 		if (features.isEmpty()) {
-			return new TargetFeature[0];
+			return;
 		}
 
 		// Now get features for all known features
@@ -257,8 +305,7 @@ public class IUBundleContainer extends AbstractBundleContainer {
 				result.add(allFeature);
 			}
 		}
-		fFeatures = result.toArray(new TargetFeature[result.size()]);
-		return fFeatures;
+		fFeatures = result.toArray(TargetFeature[]::new);
 	}
 
 	@Override
@@ -275,25 +322,18 @@ public class IUBundleContainer extends AbstractBundleContainer {
 	 * NOTE: this method expects the synchronizer to be synchronized and is called
 	 * as a result of a synchronization operation.
 	 */
-	IInstallableUnit[] cacheIUs(ITargetDefinition target) throws CoreException {
+	private void cacheIUs() throws CoreException {
 		IProfile profile = fSynchronizer.getProfile();
-		ArrayList<IInstallableUnit> result = new ArrayList<>();
-		MultiStatus status = new MultiStatus(PDECore.PLUGIN_ID, 0, Messages.IUBundleContainer_ProblemsLoadingRepositories, null);
-		for (int i = 0; i < fIds.length; i++) {
-			IQuery<IInstallableUnit> query = QueryUtil.createIUQuery(fIds[i], fVersions[i]);
-			IQueryResult<IInstallableUnit> queryResult = profile.query(query, null);
-			if (queryResult.isEmpty()) {
-				status.add(Status.error(NLS.bind(Messages.IUBundleContainer_1, fIds[i] + " " + fVersions[i]))); //$NON-NLS-1$
-			} else {
-				result.add(queryResult.iterator().next());
-			}
+		Map<IInstallableUnit, UnitDeclaration> result = new LinkedHashMap<>();
+		MultiStatus status = new MultiStatus(PDECore.PLUGIN_ID, 0, Messages.IUBundleContainer_ProblemsLoadingRepositories);
+		for (UnitDeclaration unit : fIUs) {
+			queryIU(profile, unit, status).ifPresent(iu -> result.put(iu, unit));
 		}
 		if (!status.isOK()) {
 			fResolutionStatus = status;
 			throw new CoreException(status);
 		}
-		fUnits = result.toArray(new IInstallableUnit[result.size()]);
-		return fUnits;
+		fUnits = Collections.unmodifiableMap(result);
 	}
 
 	/**
@@ -301,14 +341,14 @@ public class IUBundleContainer extends AbstractBundleContainer {
 	 * NOTE: this method expects the synchronizer to be synchronized and is called
 	 * as a result of a synchronization operation.
 	 */
-	TargetBundle[] cacheBundles(ITargetDefinition target) throws CoreException {
+	private void cacheBundles(ITargetDefinition target) throws CoreException {
 		// slice the profile to find the bundles attributed to this container.
 		// Look only for strict dependencies if we are using the slicer.
 		// We can always consider all platforms since the profile wouldn't contain it if it was not interesting
 		boolean onlyStrict = !fSynchronizer.getIncludeAllRequired();
 		IProfile metadata = fSynchronizer.getProfile();
 		PermissiveSlicer slicer = new PermissiveSlicer(metadata, new HashMap<>(), true, false, true, onlyStrict, false);
-		IQueryable<IInstallableUnit> slice = slicer.slice(Arrays.asList(fUnits), new NullProgressMonitor());
+		IQueryable<IInstallableUnit> slice = slicer.slice(fUnits.keySet(), new NullProgressMonitor());
 
 		if (slicer.getStatus().getSeverity() == IStatus.ERROR) {
 			// If the slicer has an error, report it instead of returning an empty set
@@ -328,7 +368,8 @@ public class IUBundleContainer extends AbstractBundleContainer {
 			if (PDECore.DEBUG_TARGET_PROFILE) {
 				System.out.println("Bundle pool repository could not be loaded"); //$NON-NLS-1$
 			}
-			return fBundles = null;
+			fBundles = null;
+			return;
 		}
 
 		Map<BundleInfo, TargetBundle> bundles = generateResolvedBundles(slice, metadata, artifacts);
@@ -340,12 +381,10 @@ public class IUBundleContainer extends AbstractBundleContainer {
 				// If the slicer has warnings, they probably caused there to be no bundles available
 				throw new CoreException(slicer.getStatus());
 			}
-
-			return fBundles = null;
+			fBundles = null;
+			return;
 		}
-
-		fBundles = bundles.values().toArray(new TargetBundle[bundles.size()]);
-		return fBundles;
+		fBundles = bundles.values().toArray(TargetBundle[]::new);
 	}
 
 	/*
@@ -356,7 +395,7 @@ public class IUBundleContainer extends AbstractBundleContainer {
 	void synchronizerChanged(ITargetDefinition target) {
 		try {
 			// cache the IUs first as they are used to slice the profile for the other caches.
-			cacheIUs(target);
+			cacheIUs();
 			cacheBundles(target);
 			cacheFeatures(target);
 		} catch (CoreException e) {
@@ -383,36 +422,39 @@ public class IUBundleContainer extends AbstractBundleContainer {
 	 */
 	public synchronized IUBundleContainer update(Set<String> toUpdate, IProgressMonitor monitor) throws CoreException {
 		SubMonitor progress = SubMonitor.convert(monitor, 100);
-		URI[] updateRepos = fRepos == null ? null : fRepos.clone();
-		IQueryable<IInstallableUnit> source = P2TargetUtils.getQueryableMetadata(updateRepos, IsFollowRepositoryReferences(),
-				progress.split(30));
+		IQueryable<IInstallableUnit> source = P2TargetUtils.getQueryableMetadata(fRepos, isFollowRepositoryReferences(),
+				true, progress.split(30));
 		boolean updated = false;
-		String[] updateIDs = fIds.clone();
-		Version[] updateVersions = fVersions.clone();
-		SubMonitor loopProgress = progress.split(70).setWorkRemaining(updateIDs.length);
-		for (int i = 0; i < updateIDs.length; i++) {
-			if (!toUpdate.isEmpty() && !toUpdate.contains(updateIDs[i])) {
+		List<UnitDeclaration> updatedUnits = new ArrayList<>(fIUs);
+		SubMonitor loopProgress = progress.split(70).setWorkRemaining(updatedUnits.size());
+		for (int i = 0; i < updatedUnits.size(); i++) {
+			UnitDeclaration unit = updatedUnits.get(i);
+			if (!toUpdate.isEmpty() && !toUpdate.contains(unit.id())) {
 				continue;
 			}
-			IQuery<IInstallableUnit> query = QueryUtil.createLatestQuery(QueryUtil.createIUQuery(updateIDs[i]));
-			IQueryResult<IInstallableUnit> queryResult = source.query(query, loopProgress.split(1));
-			Iterator<IInstallableUnit> it = queryResult.iterator();
-			// bail if the feature is no longer available.
-			if (!it.hasNext()) {
-				throw new CoreException(Status.error(NLS.bind(Messages.IUBundleContainer_1, updateIDs[i])));
-			}
-			IInstallableUnit iu = it.next();
+			IQuery<IInstallableUnit> query = createLatestIUQuery(unit.id());
+			Optional<IInstallableUnit> queryResult = queryFirst(source, query, loopProgress.split(1));
+			Version updatedVersion = queryResult.map(IInstallableUnit::getVersion)
+					// bail if the feature is no longer available.
+					.orElseThrow(() -> new CoreException(Status.error(NLS.bind(Messages.IUBundleContainer_1, unit))));
 			// if the version is different from the spec (up or down), record the change.
-			if (!iu.getVersion().equals(updateVersions[i])) {
+			if (!unit.hasSingleVersion()) {
+				updated = true;
+				// Don't update version ranges. They are usually intended to not
+				// use the latest version. Updating them is done explicitly.
+				continue;
+			}
+			Version declaredVersion = unit.getSingleVersion();
+			if (!updatedVersion.equals(declaredVersion)) {
 				updated = true;
 				// if the spec was not specific (e.g., 0.0.0) the target def itself has changed.
-				if (!updateVersions[i].equals(Version.emptyVersion)) {
-					updateVersions[i] = iu.getVersion();
+				if (!declaredVersion.equals(Version.emptyVersion)) {
+					updatedUnits.set(i, UnitDeclaration.create(unit.id(), updatedVersion));
 				}
 			}
 		}
 		if (updated) {
-			return new IUBundleContainer(updateIDs, updateVersions, updateRepos, fFlags);
+			return new IUBundleContainer(updatedUnits, fRepos, fFlags);
 		}
 		return null;
 	}
@@ -441,9 +483,9 @@ public class IUBundleContainer extends AbstractBundleContainer {
 				// bit of a hack using the bundle naming convention for finding source bundles
 				// but this matches what we do when adding source to the profile so...
 				IQuery<IInstallableUnit> sourceQuery = QueryUtil.createIUQuery(unit.getId() + ".source", unit.getVersion()); //$NON-NLS-1$
-				IQueryResult<IInstallableUnit> result = metadata.query(sourceQuery, null);
-				if (!result.isEmpty()) {
-					generateBundle(result.iterator().next(), artifacts, bundles);
+				Optional<IInstallableUnit> result = queryFirst(metadata, sourceQuery, null);
+				if (result.isPresent()) {
+					generateBundle(result.get(), artifacts, bundles);
 				}
 			}
 		}
@@ -477,15 +519,8 @@ public class IUBundleContainer extends AbstractBundleContainer {
 
 	@Override
 	public int hashCode() {
-		final int prime = 31;
-		int hash = Boolean.valueOf(getIncludeAllRequired()).hashCode();
-		hash = prime * hash + Boolean.valueOf(getIncludeAllEnvironments()).hashCode();
-		hash = prime * hash + Boolean.valueOf(getIncludeSource()).hashCode();
-		hash = prime * hash + Boolean.valueOf(getIncludeConfigurePhase()).hashCode();
-		hash = prime * hash + Arrays.hashCode(fIds);
-		hash = prime * hash + Arrays.hashCode(fRepos);
-		hash = prime * hash + Arrays.hashCode(fVersions);
-		return hash;
+		return Objects.hash(getIncludeAllRequired(), getIncludeAllEnvironments(), getIncludeSource(),
+				getIncludeConfigurePhase(), fIUs, fRepos);
 	}
 
 	@Override
@@ -493,43 +528,22 @@ public class IUBundleContainer extends AbstractBundleContainer {
 		if (this == obj) {
 			return true;
 		}
-		if (obj == null) {
-			return false;
-		}
-		if (!(obj instanceof IUBundleContainer other)) {
-			return false;
-		}
-		if (getIncludeAllRequired() != other.getIncludeAllRequired()) {
-			return false;
-		}
-		if (getIncludeAllEnvironments() != other.getIncludeAllEnvironments()) {
-			return false;
-		}
-		if (getIncludeSource() != other.getIncludeSource()) {
-			return false;
-		}
-		if (getIncludeConfigurePhase() != other.getIncludeConfigurePhase()) {
-			return false;
-		}
-		if (!Arrays.equals(fIds, other.fIds)) {
-			return false;
-		}
-		if (!Arrays.equals(fRepos, other.fRepos)) {
-			return false;
-		}
-		if (!Arrays.equals(fVersions, other.fVersions)) {
-			return false;
-		}
-		return true;
+		return obj instanceof IUBundleContainer other //
+				&& getIncludeAllRequired() == other.getIncludeAllRequired()
+				&& getIncludeAllEnvironments() == other.getIncludeAllEnvironments()
+				&& getIncludeSource() == other.getIncludeSource()
+				&& getIncludeConfigurePhase() == other.getIncludeConfigurePhase() //
+				&& fIUs.equals(other.fIUs) //
+				&& fRepos.equals(other.fRepos);
 	}
 
 	/**
 	 * Returns the URI's identifying the metadata repositories to consider when resolving
 	 * IU's or <code>null</code> if the default set should be used.
 	 *
-	 * @return metadata repository URI's or <code>null</code>
+	 * @return metadata repository URI's, may be empty.
 	 */
-	public URI[] getRepositories() {
+	public List<URI> getRepositories() {
 		return fRepos;
 	}
 
@@ -539,17 +553,10 @@ public class IUBundleContainer extends AbstractBundleContainer {
 	 * @param unit unit to remove from the list of root IUs
 	 */
 	public synchronized void removeInstallableUnit(IInstallableUnit unit) {
-		List<String> newIds = new ArrayList<>(fIds.length);
-		List<Version> newVersions = new ArrayList<>(fIds.length);
-		for (int i = 0; i < fIds.length; i++) {
-			if (!fIds[i].equals(unit.getId()) || !fVersions[i].equals(unit.getVersion())) {
-				newIds.add(fIds[i]);
-				newVersions.add(fVersions[i]);
-			}
+		UnitDeclaration description = fUnits.get(unit);
+		if (description != null) {
+			fIUs.remove(description);
 		}
-		fIds = newIds.toArray(new String[newIds.size()]);
-		fVersions = newVersions.toArray(new Version[newVersions.size()]);
-
 		// Need to mark the container as unresolved
 		clearResolutionStatus();
 	}
@@ -620,7 +627,7 @@ public class IUBundleContainer extends AbstractBundleContainer {
 	 *
 	 * @return whether or not repository references should be followed
 	 */
-	public boolean IsFollowRepositoryReferences() {
+	public boolean isFollowRepositoryReferences() {
 		// if this container has not been associated with a container, return
 		// its own value
 		if (fSynchronizer == null) {
@@ -633,31 +640,24 @@ public class IUBundleContainer extends AbstractBundleContainer {
 	 * Returns the installable units defined by this container
 	 *
 	 * @return the discovered IUs
-	 * @exception CoreException if unable to retrieve IU's
 	 */
-	public IInstallableUnit[] getInstallableUnits() throws CoreException {
-		if (fUnits == null) {
-			return new IInstallableUnit[0];
-		}
-		return fUnits;
+	public Collection<IInstallableUnit> getInstallableUnits() {
+		return fUnits.keySet();
 	}
 
-	/**
-	 * Returns installable unit identifiers.
-	 *
-	 * @return IU id's
-	 */
-	String[] getIds() {
-		return fIds;
+	public Map<IInstallableUnit, String> getInstallableUnitSpecifications() {
+		return fUnits.entrySet().stream().collect(Collectors.toUnmodifiableMap(Map.Entry::getKey, e -> {
+			UnitDeclaration u = e.getValue();
+			if (u.hasEmptyVersion() || !u.hasSingleVersion()) {
+				return u.version().toString();
+			}
+			return ""; //$NON-NLS-1$
+		}));
 	}
 
-	/**
-	 * Returns installable unit versions.
-	 *
-	 * @return IU versions
-	 */
-	Version[] getVersions() {
-		return fVersions;
+	/** Returns the declared installable unit identifiers and versions. */
+	Collection<UnitDeclaration> getDeclaredUnits() {
+		return Collections.unmodifiableSet(fIUs);
 	}
 
 	/**
@@ -697,6 +697,13 @@ public class IUBundleContainer extends AbstractBundleContainer {
 		fSynchronizer.setFollowRepositoryReferences((fFlags & FOLLOW_REPOSITORY_REFERENCES) == FOLLOW_REPOSITORY_REFERENCES);
 	}
 
+	private static final Comparator<UnitDeclaration> BY_ID_THEN_VERSION = Comparator.comparing(UnitDeclaration::id)
+			// single versions first, then ranges
+			.thenComparing(u -> !u.hasSingleVersion()) // false<true
+			.thenComparing(unit -> unit.version().getMinimum())
+			// for single versions lower-bound == upper-bound
+			.thenComparing(unit -> unit.version().getMaximum());
+
 	@Override
 	public String serialize() {
 		Element containerElement;
@@ -720,7 +727,7 @@ public class IUBundleContainer extends AbstractBundleContainer {
 		// most users will never edit it.
 		// As such, for stability, conciseness, and readability, we specifically
 		// don't serialize its default state.
-		boolean includeReferences = IsFollowRepositoryReferences();
+		boolean includeReferences = isFollowRepositoryReferences();
 		if (includeReferences) {
 			containerElement.removeAttribute(TargetDefinitionPersistenceHelper.ATTR_FOLLOW_REPOSITORY_REFERENCES);
 		} else {
@@ -728,23 +735,22 @@ public class IUBundleContainer extends AbstractBundleContainer {
 					Boolean.toString(includeReferences));
 		}
 
-		URI[] repositories = getRepositories();
-		if (repositories != null) {
-			Arrays.sort(repositories);
-			for (URI repository : repositories) {
-				Element repo = document.createElement(TargetDefinitionPersistenceHelper.REPOSITORY);
-				repo.setAttribute(TargetDefinitionPersistenceHelper.LOCATION, repository.toASCIIString());
-				containerElement.appendChild(repo);
-			}
+		List<URI> repositories = new ArrayList<>(getRepositories());
+		repositories.sort(null);
+		for (URI repository : repositories) {
+			Element repo = document.createElement(TargetDefinitionPersistenceHelper.REPOSITORY);
+			repo.setAttribute(TargetDefinitionPersistenceHelper.LOCATION, repository.toASCIIString());
+			containerElement.appendChild(repo);
 		}
-		String[] ids = getIds();
-		Version[] versions = getVersions();
-		for (int i : getPredictableOrder(ids, versions)) {
+		// Generate a predictable order of the elements
+		fIUs.stream().sorted(BY_ID_THEN_VERSION).forEach(iu -> {
 			Element unit = document.createElement(TargetDefinitionPersistenceHelper.INSTALLABLE_UNIT);
-			unit.setAttribute(TargetDefinitionPersistenceHelper.ATTR_ID, ids[i]);
-			unit.setAttribute(TargetDefinitionPersistenceHelper.ATTR_VERSION, versions[i].toString());
+			unit.setAttribute(TargetDefinitionPersistenceHelper.ATTR_ID, iu.id());
+			if (iu.hasVersion()) {
+				unit.setAttribute(TargetDefinitionPersistenceHelper.ATTR_VERSION, iu.versionString());
+			}
 			containerElement.appendChild(unit);
-		}
+		});
 		try {
 			document.appendChild(containerElement);
 			StreamResult result = new StreamResult(new StringWriter());
@@ -759,49 +765,37 @@ public class IUBundleContainer extends AbstractBundleContainer {
 		}
 	}
 
-	/**
-	 * Generate a predictable order of the elements. Sort order is ID followed
-	 * by version.
-	 *
-	 * @param ids Installable unit identifiers
-	 * @param versions Installable unit versions
-	 * @return The element order to use
-	 */
-	private int[] getPredictableOrder(String[] ids, Version[] versions) {
-		Comparator<Integer> idVersionCmp = (i1, i2) -> {
-			String id1 = ids[i1], id2 = ids[i2];
-			Version ver1 = versions[i1], ver2 = versions[i2];
-
-			int c = id1.compareTo(id2);
-			if (c == 0) {
-				return ver1.compareTo(ver2);
-			}
-			return c;
-		};
-
-		return IntStream.range(0, ids.length).boxed().sorted(idVersionCmp).mapToInt(i -> i).toArray();
-	}
-
-	IInstallableUnit[] getRootIUs(ITargetDefinition definition, IProgressMonitor monitor) throws CoreException {
+	Map<IInstallableUnit, Set<VersionRange>> getRootIUs(IProgressMonitor monitor) throws CoreException {
 		IQueryable<IInstallableUnit> repos = P2TargetUtils.getQueryableMetadata(getRepositories(),
-				IsFollowRepositoryReferences(), monitor);
-		MultiStatus status = new MultiStatus(PDECore.PLUGIN_ID, 0, Messages.IUBundleContainer_ProblemsLoadingRepositories, null);
-		List<IInstallableUnit> result = new ArrayList<>();
-		for (int j = 0; j < fIds.length; j++) {
-			// For versions such as 0.0.0, the IU query may return multiple IUs, so we check which is the latest version
-			IQuery<IInstallableUnit> query = QueryUtil.createLatestQuery(QueryUtil.createIUQuery(fIds[j], fVersions[j]));
-			IQueryResult<IInstallableUnit> queryResult = repos.query(query, null);
-			if (queryResult.isEmpty()) {
-				status.add(Status.error(NLS.bind(Messages.IUBundleContainer_1, fIds[j] + " " + fVersions[j])));//$NON-NLS-1$
-			} else {
-				result.add(queryResult.iterator().next());
-			}
+				isFollowRepositoryReferences(), monitor);
+		MultiStatus status = new MultiStatus(PDECore.PLUGIN_ID, 0, Messages.IUBundleContainer_ProblemsLoadingRepositories);
+		Map<IInstallableUnit, Set<VersionRange>> result = new HashMap<>();
+		for (UnitDeclaration iu : fIUs) {
+			queryIU(repos, iu, status)
+					.ifPresent(u -> result.computeIfAbsent(u, __ -> new HashSet<>(1)).add(iu.version()));
 		}
 		if (!status.isOK()) {
 			fResolutionStatus = status;
 			throw new CoreException(status);
 		}
-		return result.toArray(new IInstallableUnit[0]);
+		return result;
+	}
+
+	private Optional<IInstallableUnit> queryIU(IQueryable<IInstallableUnit> queryable, UnitDeclaration iu,
+			MultiStatus status) {
+		Optional<IInstallableUnit> queryResult = queryFirst(queryable, iu.createIUQuery(), null);
+		if (queryResult.isEmpty()) {
+			status.add(Status.error(NLS.bind(Messages.IUBundleContainer_1, iu)));
+		}
+		return queryResult;
+	}
+
+	static <T> Optional<T> queryFirst(IQueryable<T> queryable, IQuery<T> query, IProgressMonitor monitor) {
+		return queryable.query(query, monitor).stream().findFirst();
+	}
+
+	private static IQuery<IInstallableUnit> createLatestIUQuery(String id) {
+		return QueryUtil.createLatestQuery(QueryUtil.createIUQuery(id));
 	}
 
 	@Override
@@ -814,18 +808,7 @@ public class IUBundleContainer extends AbstractBundleContainer {
 
 	@Override
 	public String toString() {
-		StringBuilder sb = new StringBuilder(getClass().getSimpleName());
-		sb.append('[');
-		if (fRepos != null) {
-			for (int i = 0; i < fRepos.length; i++) {
-				sb.append(fRepos[i]);
-				if (i > 0) {
-					sb.append(',');
-				}
-			}
-		}
-		sb.append(']');
-		return sb.toString();
+		return getClass().getSimpleName() + fRepos;
 	}
 
 }

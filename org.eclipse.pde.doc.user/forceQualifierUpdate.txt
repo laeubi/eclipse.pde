@@ -1,3 +1,2 @@
-# To force a version qualifier update add the issue here
-Fix deprecation tag 'since' value
-Modernize pde.project description interfaces: https://github.com/eclipse-pde/eclipse.pde/pull/1341
+Rebuild with Java 21
+Touch for javadoc switch to java 21

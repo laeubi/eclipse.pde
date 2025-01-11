@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2017, 2022 Red Hat Inc. and others.
+ * Copyright (c) 2017, 2024 Red Hat Inc. and others.
  *
  * This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License 2.0
@@ -117,17 +117,7 @@ public class TestPDETemplates {
 		data.setHasBundleStructure(true);
 		data.setSourceFolderName("src");
 		data.setOutputFolderName("bin");
-		data.setExecutionEnvironment("JavaSE-1.8");
-		String version = System.getProperty("java.specification.version"); //$NON-NLS-1$
-		int ver = -1;
-		try {
-			ver = Integer.parseInt(version);
-		} catch (NumberFormatException e) {
-			// preJava9
-		}
-		if (ver >= 9) {
-			data.setExecutionEnvironment("JavaSE-" + version);
-		}
+		data.setExecutionEnvironment("JavaSE-" + Runtime.version().feature());
 		data.setTargetVersion(ICoreConstants.TARGET_VERSION_LATEST);
 		data.setDoGenerateClass(true);
 		String pureOSGi = template.getConfigurationElement().getAttribute("pureOSGi");
@@ -183,12 +173,18 @@ public class TestPDETemplates {
 	private void assertErrorFree() throws CoreException {
 		IMarker[] markers = project.findMarkers(IMarker.PROBLEM, true, IResource.DEPTH_INFINITE);
 
+		// ignore "value of lambda parameter is not used", filtering should be
+		// removed once the min JVM level supports this warning (Java 22) and
+		// templates are fixed to not produce it
+		markers = Arrays.stream(markers).filter(
+				m -> !m.getAttribute(IMarker.MESSAGE, "").equals("The value of the lambda parameter e is not used"))
+				.toArray(IMarker[]::new);
+
 		// ignore missing package export marker
 		if (markers.length == 1 && CompilerFlags.P_MISSING_EXPORT_PKGS
 				.equals(markers[0].getAttribute(PDEMarkerFactory.compilerKey, ""))) {
 			System.out.println("Template '" + template.getLabel() + "' ignored errors.");
 			System.out.println(markers[0]);
-			System.out.println("--------------------------------------------------------");
 			markers = new IMarker[0];
 		}
 		// ignore "DS Annotations missing from permanent build path"

@@ -43,10 +43,11 @@ public interface ITargetConstants {
 	String ARTIFACT_ID_TAG = "artifactId";//$NON-NLS-1$
 	String VERSION_TAG = "version";//$NON-NLS-1$
 	String TYPE_TAG = "type";//$NON-NLS-1$
+	String IMPLICITDEPENDENCIES_TAG = "implicitDependencies";//$NON-NLS-1$
+	String PLUGIN_TAG = "plugin";//$NON-NLS-1$
 	String UNIT_ID_ATTR = "id"; //$NON-NLS-1$
 	String UNIT_VERSION_ATTR = "version"; //$NON-NLS-1$
 	String TARGET_NAME_ATTR = "name"; //$NON-NLS-1$
-	String TARGET_SEQ_NO_ATTR = "sequenceNumber"; //$NON-NLS-1$
 	String LOCATION_INCLUDE_PLATFORMS_ATTR = "includeAllPlatforms"; //$NON-NLS-1$
 	String LOCATION_INCLUDE_CONFIG_PHASE_ATTR = "includeConfigurePhase"; //$NON-NLS-1$
 	String LOCATION_FOLLOW_REPOSITORY_REFERENCES_ATTR = "followRepositoryReferences";

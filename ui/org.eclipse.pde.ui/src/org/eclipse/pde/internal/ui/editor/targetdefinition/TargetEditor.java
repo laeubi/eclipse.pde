@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2005, 2022 IBM Corporation and others.
+ * Copyright (c) 2005, 2024 IBM Corporation and others.
  *
  * This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License 2.0
@@ -65,6 +65,7 @@ import org.eclipse.pde.internal.core.PDECore;
 import org.eclipse.pde.internal.core.PDEPreferencesManager;
 import org.eclipse.pde.internal.core.target.P2TargetUtils;
 import org.eclipse.pde.internal.core.target.TargetDefinitionPersistenceHelper;
+import org.eclipse.pde.internal.core.target.TargetPlatformService;
 import org.eclipse.pde.internal.core.target.WorkspaceFileTargetHandle;
 import org.eclipse.pde.internal.ui.IHelpContextIds;
 import org.eclipse.pde.internal.ui.PDEPlugin;
@@ -90,6 +91,7 @@ import org.eclipse.ui.PartInitException;
 import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.dialogs.PreferencesUtil;
 import org.eclipse.ui.dialogs.SaveAsDialog;
+import org.eclipse.ui.editors.text.TextEditor;
 import org.eclipse.ui.forms.AbstractFormPart;
 import org.eclipse.ui.forms.HyperlinkGroup;
 import org.eclipse.ui.forms.IFormPart;
@@ -100,7 +102,6 @@ import org.eclipse.ui.forms.events.IHyperlinkListener;
 import org.eclipse.ui.forms.widgets.FormToolkit;
 import org.eclipse.ui.forms.widgets.ImageHyperlink;
 import org.eclipse.ui.forms.widgets.ScrolledForm;
-import org.eclipse.ui.internal.genericeditor.ExtensionBasedTextEditor;
 import org.eclipse.ui.part.FileEditorInput;
 import org.eclipse.ui.progress.UIJob;
 import org.osgi.service.event.Event;
@@ -118,7 +119,7 @@ import org.xml.sax.SAXException;
 public class TargetEditor extends FormEditor {
 
 	private final List<IManagedForm> fManagedFormPages = new ArrayList<>(2);
-	private ExtensionBasedTextEditor fTextualEditor;
+	private TextEditor fTextualEditor;
 	private int fSourceTabIndex;
 	private IDocument fTargetDocument;
 	private IDocumentListener fTargetDocumentListener;
@@ -175,6 +176,7 @@ public class TargetEditor extends FormEditor {
 
 	@Override
 	public void doSave(IProgressMonitor monitor) {
+		ITargetHandle handle = fInputHandler.getTarget().getHandle();
 		fInputHandler.setSaving(true);
 		if (!isActiveTabTextualEditor()) {
 			markStale();
@@ -184,6 +186,8 @@ public class TargetEditor extends FormEditor {
 		fDirty = false;
 		editorDirtyStateChanged();
 		fInputHandler.setSaving(false);
+
+		TargetPlatformService.scheduleEvent(TargetEvents.TOPIC_TARGET_SAVED, handle);
 	}
 
 	@Override
@@ -286,6 +290,16 @@ public class TargetEditor extends FormEditor {
 		super.dispose();
 	}
 
+	@Override
+	public <T> T getAdapter(Class<T> adapter) {
+		if (adapter.equals(ITargetHandle.class)) {
+			ITargetDefinition target = getTarget();
+			if (target != null) {
+				return adapter.cast(target.getHandle());
+			}
+		}
+		return super.getAdapter(adapter);
+	}
 	/**
 	 * Returns the target model backing this editor
 	 * @return target model
@@ -518,7 +532,8 @@ public class TargetEditor extends FormEditor {
 				fTarget = service.newTarget();
 				throw e;
 			}
-			TargetEditor.this.getTargetChangedListener().contentsChanged(fTarget, this, true, false);
+			PlatformUI.getWorkbench().getDisplay().asyncExec(
+					() -> TargetEditor.this.getTargetChangedListener().contentsChanged(fTarget, this, true, false));
 			return fTarget;
 		}
 
@@ -554,8 +569,11 @@ public class TargetEditor extends FormEditor {
 	/**
 	 * initializes fTargetDocument and fTargetDocumentListener
 	 */
+
 	private void addTextualEditorPage() throws PartInitException {
-		fTextualEditor = new ExtensionBasedTextEditor();
+		@SuppressWarnings("restriction")
+		TextEditor newEditor = new org.eclipse.ui.internal.genericeditor.ExtensionBasedTextEditor();
+		fTextualEditor = newEditor;
 		fSourceTabIndex = addPage(fTextualEditor, getEditorInput());
 		Control editorControl = fTextualEditor.getAdapter(Control.class);
 		PlatformUI.getWorkbench().getHelpSystem().setHelp(editorControl, IHelpContextIds.TARGET_EDITOR_SOURCE_PAGE);

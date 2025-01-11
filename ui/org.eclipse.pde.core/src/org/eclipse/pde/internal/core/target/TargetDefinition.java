@@ -24,12 +24,12 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -124,8 +124,6 @@ public class TargetDefinition implements ITargetDefinition {
 	private TargetFeature[] fFeatures;
 	private TargetBundle[] fOtherBundles;
 
-	private int fSequenceNumber = -1;
-
 	/**
 	 * Constructs a target definition based on the given handle.
 	 */
@@ -210,7 +208,6 @@ public class TargetDefinition implements ITargetDefinition {
 
 	@Override
 	public void setArch(String arch) {
-		incrementSequenceNumber();
 		fArch = arch;
 		if (fRoot != null && arch != null && !arch.isEmpty()) {
 			Element archNode = TargetDefinitionDocumentTools.getChildElement(fRoot,
@@ -224,7 +221,6 @@ public class TargetDefinition implements ITargetDefinition {
 
 	@Override
 	public void setNL(String nl) {
-		incrementSequenceNumber();
 		fNL = nl;
 		if (fRoot != null && nl != null && !nl.isEmpty()) {
 			Element nlNode = TargetDefinitionDocumentTools.getChildElement(fRoot,
@@ -250,7 +246,6 @@ public class TargetDefinition implements ITargetDefinition {
 
 	@Override
 	public void setOS(String os) {
-		incrementSequenceNumber();
 		fOS = os;
 		if (fRoot != null && os != null && !os.isEmpty()) {
 			Element nlNode = TargetDefinitionDocumentTools.getChildElement(fRoot,
@@ -296,7 +291,6 @@ public class TargetDefinition implements ITargetDefinition {
 
 	@Override
 	public void setWS(String ws) {
-		incrementSequenceNumber();
 		fWS = ws;
 		if (fRoot != null && ws != null && !ws.isEmpty()) {
 			Element nlNode = TargetDefinitionDocumentTools.getChildElement(fRoot,
@@ -310,7 +304,6 @@ public class TargetDefinition implements ITargetDefinition {
 
 	@Override
 	public void setTargetLocations(ITargetLocation[] locations) {
-		incrementSequenceNumber();
 		// Clear the feature model cache as it is based on the bundle container locations
 		fFeatures = null;
 		fOtherBundles = null;
@@ -372,7 +365,7 @@ public class TargetDefinition implements ITargetDefinition {
 		fResolutionStatus = null;
 		SubMonitor subMonitor = SubMonitor.convert(monitor, Messages.TargetDefinition_1, targetLocations.length * 100);
 		try {
-			MultiStatus status = new MultiStatus(PDECore.PLUGIN_ID, 0, Messages.TargetDefinition_2, null);
+			MultiStatus status = new MultiStatus(PDECore.PLUGIN_ID, 0, Messages.TargetDefinition_2);
 			Map<P2TargetUtils, List<ITargetLocation>> synchronizers = new HashMap<>();
 			// clear all previous maps
 			P2TargetUtils.fgTargetArtifactRepo.clear();
@@ -396,17 +389,17 @@ public class TargetDefinition implements ITargetDefinition {
 				List<ITargetLocation> delayedLocations = synchronizers.values().stream().flatMap(Collection::stream)
 						.toList();
 				subMonitor.setWorkRemaining(synchronizers.size() * 100 + delayedLocations.size());
-				for (Entry<P2TargetUtils, List<ITargetLocation>> entry : synchronizers.entrySet()) {
+				synchronizers.forEach((synchronizer, locations) -> {
 					subMonitor.checkCanceled();
 					try {
-						entry.getKey().synchronize(this, subMonitor.split(100));
-						entry.getValue().stream().map(loc -> loc.getStatus()).filter(Objects::nonNull)
-								.filter(s -> !s.isOK()).forEach(status::add);
+						synchronizer.synchronize(this, subMonitor.split(100));
+						locations.stream().map(ITargetLocation::getStatus).filter(s -> s != null && !s.isOK())
+								.forEach(status::add);
 					} catch (CoreException e) {
 						PDECore.log(e.getStatus());
 						status.add(e.getStatus());
 					}
-				}
+				});
 				for (ITargetLocation location : delayedLocations) {
 					subMonitor.checkCanceled();
 					IStatus s = location.resolve(this, subMonitor.split(1));
@@ -450,7 +443,7 @@ public class TargetDefinition implements ITargetDefinition {
 			ITargetLocation[] containers = getTargetLocations();
 			if (containers != null) {
 				// Check if the containers have any resolution problems
-				MultiStatus result = new MultiStatus(PDECore.PLUGIN_ID, 0, Messages.TargetDefinition_5, null);
+				MultiStatus result = new MultiStatus(PDECore.PLUGIN_ID, 0, Messages.TargetDefinition_5);
 				for (ITargetLocation container : containers) {
 					IStatus containerStatus = container.getStatus();
 					if (containerStatus != null && !containerStatus.isOK()) {
@@ -641,11 +634,8 @@ public class TargetDefinition implements ITargetDefinition {
 		// map bundles names to available versions
 		Map<String, List<TargetBundle>> bundleMap = new HashMap<>(collection.length);
 		for (TargetBundle resolved : collection) {
-			List<TargetBundle> list = bundleMap.get(resolved.getBundleInfo().getSymbolicName());
-			if (list == null) {
-				list = new ArrayList<>(3);
-				bundleMap.put(resolved.getBundleInfo().getSymbolicName(), list);
-			}
+			String name = resolved.getBundleInfo().getSymbolicName();
+			List<TargetBundle> list = bundleMap.computeIfAbsent(name, n -> new ArrayList<>(3));
 			list.add(resolved);
 		}
 		List<TargetBundle> resolved = new ArrayList<>();
@@ -773,7 +763,6 @@ public class TargetDefinition implements ITargetDefinition {
 			fProgramArgs = null;
 			fVMArgs = null;
 			fWS = null;
-			fSequenceNumber = 0;
 			fDocument = null;
 			fRoot = null;
 			TargetDefinitionPersistenceHelper.initFromXML(this, stream);
@@ -839,9 +828,7 @@ public class TargetDefinition implements ITargetDefinition {
 				descriptorElements.add(plugin);
 			}
 
-			TargetDefinitionDocumentTools.updateElements(implicitDependenciesElement, null, descriptorElements,
-					(Element o1, Element o2) -> o1.getAttribute(TargetDefinitionPersistenceHelper.ATTR_ID)
-							.compareTo(o2.getAttribute(TargetDefinitionPersistenceHelper.ATTR_ID)));
+			TargetDefinitionDocumentTools.updateElements(implicitDependenciesElement, null, descriptorElements, BY_ID);
 		} else {
 			removeElement(TargetDefinitionPersistenceHelper.IMPLICIT);
 		}
@@ -1041,8 +1028,7 @@ public class TargetDefinition implements ITargetDefinition {
 			}
 		}
 
-		Collection<TargetBundle> values = remaining.values();
-		fOtherBundles = values.toArray(new TargetBundle[values.size()]);
+		fOtherBundles = remaining.values().toArray(TargetBundle[]::new);
 		return fOtherBundles;
 	}
 
@@ -1111,35 +1097,6 @@ public class TargetDefinition implements ITargetDefinition {
 		}
 	}
 
-	/**
-	 * Returns the current sequence number of this target.  Sequence numbers change
-	 * whenever something in the target that affects the set of features and bundles that
-	 * would be resolved.
-	 *
-	 * @return the current sequence number
-	 */
-	public int getSequenceNumber() {
-		return fSequenceNumber;
-	}
-
-	/**
-	 * Increases the current sequence number.
-	 * @see TargetDefinition#getSequenceNumber()
-	 * @return the current sequence number after it has been increased
-	 */
-	public int incrementSequenceNumber() {
-		return ++fSequenceNumber;
-	}
-
-	/**
-	 * Convenience method to set the sequence number to a specific
-	 * value. Used when loading a target from a persisted file.
-	 * @param value value to set the sequence number to
-	 */
-	void setSequenceNumber(int value) {
-		fSequenceNumber = value;
-	}
-
 	private void removeElement(String... childNames) {
 		if (fRoot != null) {
 			TargetDefinitionDocumentTools.removeElement(fRoot, childNames);
@@ -1205,10 +1162,9 @@ public class TargetDefinition implements ITargetDefinition {
 
 		NodeList nodes = containersElement.getChildNodes();
 		for (int j = 0; j < nodes.getLength(); j++) {
-			Node node = nodes.item(j);
-			if (node instanceof Element element
-					&& node.getNodeName().equalsIgnoreCase(TargetDefinitionPersistenceHelper.LOCATION)) {
-				String type = (element).getAttribute(TargetDefinitionPersistenceHelper.ATTR_LOCATION_TYPE);
+			if (nodes.item(j) instanceof Element element
+					&& element.getNodeName().equalsIgnoreCase(TargetDefinitionPersistenceHelper.LOCATION)) {
+				String type = element.getAttribute(TargetDefinitionPersistenceHelper.ATTR_LOCATION_TYPE);
 				switch (type) {
 				case IUBundleContainer.TYPE:
 					oldIUContainers.add(element);
@@ -1244,20 +1200,21 @@ public class TargetDefinition implements ITargetDefinition {
 
 	private void updateContainerElements(Element containersElement, List<Element> oldContainers,
 			List<Element> newContainers) {
-		TargetDefinitionDocumentTools.updateElements(containersElement, oldContainers, newContainers,
-				(Element o1, Element o2) -> {
+		TargetDefinitionDocumentTools.updateElements(containersElement, oldContainers, newContainers, (o1, o2) -> {
 			int typeCompare = o1.getAttribute(TargetDefinitionPersistenceHelper.ATTR_LOCATION_TYPE)
 					.compareTo(o2.getAttribute(TargetDefinitionPersistenceHelper.ATTR_LOCATION_TYPE));
 			int pathCompare = o1.getAttribute(TargetDefinitionPersistenceHelper.ATTR_LOCATION_PATH)
 					.compareTo(o2.getAttribute(TargetDefinitionPersistenceHelper.ATTR_LOCATION_PATH));
 			int idCompare = 0;
 			if (o1 instanceof FeatureBundleContainer) {
-				idCompare = o1.getAttribute(TargetDefinitionPersistenceHelper.ATTR_ID)
-						.compareTo(o2.getAttribute(TargetDefinitionPersistenceHelper.ATTR_ID));
+				idCompare = BY_ID.compare(o1, o2);
 			}
 			return typeCompare == 0 && pathCompare == 0 && idCompare == 0 ? 0 : 1;
 		});
 	}
+
+	private static final Comparator<Element> BY_ID = Comparator
+			.comparing(o -> o.getAttribute(TargetDefinitionPersistenceHelper.ATTR_ID));
 
 	private void updateIUContainerElements(Element containersElement, List<Element> oldContainers,
 			List<Element> newContainers) {
@@ -1268,18 +1225,15 @@ public class TargetDefinition implements ITargetDefinition {
 			List<Element> units = new ArrayList<>();
 			String repoURL = null;
 			for (int i = 0; i < nodes.getLength(); i++) {
-				Node node = nodes.item(i);
-				if (node instanceof Element) {
+				if (nodes.item(i) instanceof Element element) {
 					if (repoURL == null
-							&& node.getNodeName().equalsIgnoreCase(TargetDefinitionPersistenceHelper.REPOSITORY)) {
-						repoURL = ((Element) node).getAttribute(TargetDefinitionPersistenceHelper.LOCATION);
-						if (!oldContainersByRepo.containsKey(repoURL)) {
-							oldContainersByRepo.put(repoURL, new ArrayList<>());
-						}
-						oldContainersByRepo.get(repoURL).add(container);
-					} else if (node.getNodeName()
+							&& element.getNodeName().equalsIgnoreCase(TargetDefinitionPersistenceHelper.REPOSITORY)) {
+						repoURL = element.getAttribute(TargetDefinitionPersistenceHelper.LOCATION);
+
+						oldContainersByRepo.computeIfAbsent(repoURL, u -> new ArrayList<>()).add(container);
+					} else if (element.getNodeName()
 							.equalsIgnoreCase(TargetDefinitionPersistenceHelper.INSTALLABLE_UNIT)) {
-						units.add((Element) node);
+						units.add(element);
 					}
 				}
 			}
@@ -1295,14 +1249,13 @@ public class TargetDefinition implements ITargetDefinition {
 			List<Element> units = new ArrayList<>();
 			String repoURL = null;
 			for (int i = 0; i < nodes.getLength(); i++) {
-				Node node = nodes.item(i);
-				if (node instanceof Element) {
+				if (nodes.item(i) instanceof Element element) {
 					if (repoURL == null
-							&& node.getNodeName().equalsIgnoreCase(TargetDefinitionPersistenceHelper.REPOSITORY)) {
-						repoURL = ((Element) node).getAttribute(TargetDefinitionPersistenceHelper.LOCATION);
-					} else if (node.getNodeName()
+							&& element.getNodeName().equalsIgnoreCase(TargetDefinitionPersistenceHelper.REPOSITORY)) {
+						repoURL = element.getAttribute(TargetDefinitionPersistenceHelper.LOCATION);
+					} else if (element.getNodeName()
 							.equalsIgnoreCase(TargetDefinitionPersistenceHelper.INSTALLABLE_UNIT)) {
-						units.add((Element) node);
+						units.add(element);
 					}
 				}
 			}
@@ -1310,14 +1263,13 @@ public class TargetDefinition implements ITargetDefinition {
 				if (oldContainersByRepo.containsKey(repoURL)) {
 					Element oldContainer = oldContainersByRepo.get(repoURL).get(0);
 					TargetDefinitionDocumentTools.updateElements(oldContainer, oldUnitsByContainer.get(oldContainer),
-							units,
-							(Element o1, Element o2) -> o1.getAttribute(TargetDefinitionPersistenceHelper.ATTR_ID)
-									.compareTo(o2.getAttribute(TargetDefinitionPersistenceHelper.ATTR_ID)));
+							units, BY_ID);
 					if (oldContainersByRepo.get(repoURL).size() == 1) {
 						oldContainersByRepo.remove(repoURL);
 					} else {
 						oldContainersByRepo.get(repoURL).remove(0);
 					}
+					TargetDefinitionDocumentTools.updateAttributes(oldContainer, container);
 				} else {
 					Node movedContainer = fDocument.importNode(container, true);
 					TargetDefinitionDocumentTools.addChildWithIndent(containersElement, movedContainer);
@@ -1325,8 +1277,8 @@ public class TargetDefinition implements ITargetDefinition {
 			}
 		}
 
-		for (Entry<String, List<Element>> entry : oldContainersByRepo.entrySet()) {
-			entry.getValue().forEach(TargetDefinitionDocumentTools::removeChildAndWhitespace);
+		for (List<Element> containers : oldContainersByRepo.values()) {
+			containers.forEach(TargetDefinitionDocumentTools::removeChildAndWhitespace);
 		}
 	}
 
@@ -1351,8 +1303,6 @@ public class TargetDefinition implements ITargetDefinition {
 				bundlElements.add(includedBundle);
 			}
 		}
-		TargetDefinitionDocumentTools.updateElements(parent, null, bundlElements,
-				(Element o1, Element o2) -> o1.getAttribute(TargetDefinitionPersistenceHelper.ATTR_ID)
-						.compareTo(o2.getAttribute(TargetDefinitionPersistenceHelper.ATTR_ID)));
-		}
+		TargetDefinitionDocumentTools.updateElements(parent, null, bundlElements, BY_ID);
 	}
+}

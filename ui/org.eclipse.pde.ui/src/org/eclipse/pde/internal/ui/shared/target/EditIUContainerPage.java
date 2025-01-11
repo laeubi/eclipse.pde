@@ -18,6 +18,11 @@ import static org.eclipse.swt.events.SelectionListener.widgetSelectedAdapter;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.eclipse.core.runtime.CoreException;
@@ -26,14 +31,22 @@ import org.eclipse.core.runtime.Status;
 import org.eclipse.equinox.internal.p2.ui.ProvUI;
 import org.eclipse.equinox.internal.p2.ui.ProvUIMessages;
 import org.eclipse.equinox.internal.p2.ui.dialogs.AvailableIUGroup;
+import org.eclipse.equinox.internal.p2.ui.dialogs.ContainerCheckedTreeViewer;
 import org.eclipse.equinox.internal.p2.ui.dialogs.RepositorySelectionGroup;
+import org.eclipse.equinox.internal.p2.ui.model.AvailableIUElement;
 import org.eclipse.equinox.p2.metadata.IInstallableUnit;
 import org.eclipse.equinox.p2.operations.ProvisioningSession;
 import org.eclipse.equinox.p2.ui.Policy;
 import org.eclipse.equinox.p2.ui.ProvisioningUI;
 import org.eclipse.jface.action.IAction;
 import org.eclipse.jface.dialogs.IDialogSettings;
+import org.eclipse.jface.viewers.CellEditor;
+import org.eclipse.jface.viewers.ColumnLabelProvider;
+import org.eclipse.jface.viewers.EditingSupport;
 import org.eclipse.jface.viewers.StructuredSelection;
+import org.eclipse.jface.viewers.StructuredViewer;
+import org.eclipse.jface.viewers.TextCellEditor;
+import org.eclipse.jface.viewers.TreeViewerColumn;
 import org.eclipse.jface.window.SameShellProvider;
 import org.eclipse.jface.wizard.WizardPage;
 import org.eclipse.osgi.util.NLS;
@@ -43,6 +56,7 @@ import org.eclipse.pde.core.target.ITargetPlatformService;
 import org.eclipse.pde.internal.core.PDECore;
 import org.eclipse.pde.internal.core.target.IUBundleContainer;
 import org.eclipse.pde.internal.core.target.P2TargetUtils;
+import org.eclipse.pde.internal.core.util.VersionUtil;
 import org.eclipse.pde.internal.ui.IHelpContextIds;
 import org.eclipse.pde.internal.ui.PDEPlugin;
 import org.eclipse.pde.internal.ui.SWTFactory;
@@ -56,6 +70,7 @@ import org.eclipse.swt.widgets.Label;
 import org.eclipse.swt.widgets.Text;
 import org.eclipse.swt.widgets.TreeItem;
 import org.eclipse.ui.PlatformUI;
+import org.osgi.framework.Version;
 
 /**
  * Wizard page allowing users to select which IUs they would like to download
@@ -77,6 +92,9 @@ public class EditIUContainerPage extends WizardPage implements IEditBundleContai
 	// Refresh settings
 	private static final int REFRESH_INTERVAL = 4000;
 	private static final int REFRESH_TRIES = 10;
+
+	private static final String EMPTY_VERSION = Version.emptyVersion.toString();
+	private static final String LATEST_LABEL = Messages.EditIUContainerPage_Latest_Label;
 
 	/**
 	 * If the user is only downloading from a specific repository location, we store it here so it can be persisted in the target
@@ -101,6 +119,7 @@ public class EditIUContainerPage extends WizardPage implements IEditBundleContai
 
 	private RepositorySelectionGroup fRepoSelector;
 	private AvailableIUGroup fAvailableIUGroup;
+	private Map<IInstallableUnit, String> versionSpecifications = new HashMap<>();
 	private Label fSelectionCount;
 	private Button fPropertiesButton;
 	private IAction fPropertyAction;
@@ -156,8 +175,24 @@ public class EditIUContainerPage extends WizardPage implements IEditBundleContai
 		flags |= fIncludeSourceButton.getSelection() ? IUBundleContainer.INCLUDE_SOURCE : 0;
 		flags |= fConfigurePhaseButton.getSelection() ? IUBundleContainer.INCLUDE_CONFIGURE_PHASE : 0;
 		flags |= fFollowRepositoryReferencesButton.getSelection() ? IUBundleContainer.FOLLOW_REPOSITORY_REFERENCES : 0;
-		IUBundleContainer container = (IUBundleContainer) service.newIULocation(fAvailableIUGroup.getCheckedLeafIUs(), fRepoLocation != null ? new URI[] {fRepoLocation} : null, flags);
-		return container;
+
+		IInstallableUnit[] selectedIUs = fAvailableIUGroup.getCheckedLeafIUs();
+		URI[] repos = fRepoLocation != null ? new URI[] { fRepoLocation } : null;
+		versionSpecifications.values().removeIf(String::isBlank);
+		if (!versionSpecifications.isEmpty()) {
+			List<String> ids = new ArrayList<>(selectedIUs.length);
+			List<String> versions = new ArrayList<>(selectedIUs.length);
+			for (IInstallableUnit iu : selectedIUs) {
+				ids.add(iu.getId());
+				String version = versionSpecifications.get(iu);
+				if (version == null || version.isBlank()) {
+					version = iu.getVersion().toString();
+				}
+				versions.add(version);
+			}
+			return service.newIULocation(ids.toArray(String[]::new), versions.toArray(String[]::new), repos, flags);
+		}
+		return service.newIULocation(selectedIUs, repos, flags);
 	}
 
 	@Override
@@ -211,18 +246,10 @@ public class EditIUContainerPage extends WizardPage implements IEditBundleContai
 	}
 
 	private void refreshAvailableIUArea(final Composite parent) {
-		try {
-			if (fEditContainer == null || fEditContainer.getInstallableUnits().length == 0) {
-				return;
-			}
-		} catch (CoreException e) {
-			PDEPlugin.log(e);
-		}
-
-		if (refreshThread != null && refreshThread.isAlive()) {
+		if (fEditContainer == null || fEditContainer.getInstallableUnits().isEmpty()
+				|| (refreshThread != null && refreshThread.isAlive())) {
 			return;
 		}
-
 		refreshThread = new Thread(() -> {
 			try {
 				final AtomicBoolean loaded = new AtomicBoolean(false);
@@ -242,13 +269,9 @@ public class EditIUContainerPage extends WizardPage implements IEditBundleContai
 						@SuppressWarnings("restriction")
 						final String pendingLabel = org.eclipse.ui.internal.progress.ProgressMessages.PendingUpdateAdapter_PendingLabel;
 						if (children.length > 0 && !children[0].getText().equals(pendingLabel)) {
-							try {
-								fAvailableIUGroup.getCheckboxTreeViewer().expandAll();
-								fAvailableIUGroup.setChecked(fEditContainer.getInstallableUnits());
-								fAvailableIUGroup.getCheckboxTreeViewer().collapseAll();
-							} catch (CoreException e) {
-								PDEPlugin.log(e);
-							}
+							fAvailableIUGroup.getCheckboxTreeViewer().expandAll();
+							setInstallableUnits(fEditContainer);
+							fAvailableIUGroup.getCheckboxTreeViewer().collapseAll();
 							loaded.set(true);
 						}
 					});
@@ -269,9 +292,72 @@ public class EditIUContainerPage extends WizardPage implements IEditBundleContai
 	 */
 	private void createAvailableIUArea(Composite parent) {
 		int filterConstant = AvailableIUGroup.AVAILABLE_NONE;
-		if (!profileUI.getPolicy().getRepositoriesVisible())
+		if (!profileUI.getPolicy().getRepositoriesVisible()) {
 			filterConstant = AvailableIUGroup.AVAILABLE_ALL;
-		fAvailableIUGroup = new AvailableIUGroup(profileUI, parent, parent.getFont(), fQueryContext, null, filterConstant);
+		}
+		fAvailableIUGroup = new AvailableIUGroup(profileUI, parent, parent.getFont(), fQueryContext, null,
+				filterConstant) {
+			@Override
+			protected StructuredViewer createViewer(Composite parent) {
+				ContainerCheckedTreeViewer treeViewer = (ContainerCheckedTreeViewer) super.createViewer(parent);
+				TreeViewerColumn column = new TreeViewerColumn(treeViewer, SWT.NONE, getColumnConfig().length);
+				column.getColumn().setText(Messages.EditIUContainerPage_VersionSpecification_Label);
+				column.getColumn().setWidth(150);
+				column.getColumn().setResizable(true);
+				CellEditor versionSpecEditor = new TextCellEditor(treeViewer.getTree());
+				versionSpecEditor.setValidator(this::validateVersionSpecification);
+				column.setEditingSupport(new EditingSupport(treeViewer) {
+					@Override
+					@SuppressWarnings("restriction")
+					protected void setValue(Object element, Object value) {
+						if (element instanceof AvailableIUElement iuElement && value instanceof String spec) {
+							spec = sanitizeVersionSpecification(spec);
+							versionSpecifications.put(iuElement.getIU(), spec);
+							treeViewer.update(iuElement, null);
+						}
+					}
+
+					@Override
+					protected Object getValue(Object element) {
+						return getVersionSpecification(element);
+					}
+
+					@Override
+					protected boolean canEdit(Object element) {
+						return element instanceof @SuppressWarnings("restriction") AvailableIUElement iuElement
+								&& treeViewer.getChecked(iuElement);
+					}
+
+					@Override
+					protected CellEditor getCellEditor(Object element) {
+						return versionSpecEditor;
+					}
+				});
+				column.setLabelProvider(ColumnLabelProvider.createTextProvider(this::getVersionSpecification));
+				return treeViewer;
+			}
+
+			private static String sanitizeVersionSpecification(String spec) {
+				spec = spec.strip();
+				return LATEST_LABEL.equals(spec) ? EMPTY_VERSION : spec;
+			}
+
+			@SuppressWarnings("restriction")
+			private String getVersionSpecification(Object e) {
+				String spec = e instanceof AvailableIUElement iu //
+						? versionSpecifications.getOrDefault(iu.getIU(), "") //$NON-NLS-1$
+						: ""; //$NON-NLS-1$
+				return EMPTY_VERSION.equals(spec) ? LATEST_LABEL : spec;
+			}
+
+			private String validateVersionSpecification(Object value) {
+				if (LATEST_LABEL.equals(value)) {
+					return null;
+				}
+				IStatus result = VersionUtil.validateVersionRange((String) value);
+				return result.isOK() ? null : result.getMessage();
+			}
+		};
 		fAvailableIUGroup.getCheckboxTreeViewer().addCheckStateListener(event -> {
 			IInstallableUnit[] units = fAvailableIUGroup.getCheckedLeafIUs();
 			if (units.length > 0) {
@@ -418,16 +504,12 @@ public class EditIUContainerPage extends WizardPage implements IEditBundleContai
 
 	private void warnIfGlobalSettingChanged() {
 		boolean noChange = true;
-		IUBundleContainer iuContainer = null;
 		ITargetLocation[] containers = fTarget.getTargetLocations();
 		if (containers != null) {
 			// Look for a IUBundleContainer to compare against.
-			for (ITargetLocation container : containers) {
-				if (container instanceof IUBundleContainer && container != fEditContainer) {
-					iuContainer = (IUBundleContainer) container;
-					break;
-				}
-			}
+			IUBundleContainer iuContainer = Arrays.stream(containers).filter(container -> container != fEditContainer)
+					.filter(IUBundleContainer.class::isInstance).map(IUBundleContainer.class::cast) //
+					.findFirst().orElse(null);
 			// If there is another IU container then compare against it.  No need to check them all
 			// as they will all be set the same within one target.
 			if (iuContainer != null) {
@@ -435,7 +517,7 @@ public class EditIUContainerPage extends WizardPage implements IEditBundleContai
 				noChange &= fAllPlatformsButton.getSelection() == iuContainer.getIncludeAllEnvironments();
 				noChange &= fIncludeSourceButton.getSelection() == iuContainer.getIncludeSource();
 				noChange &= fConfigurePhaseButton.getSelection() == iuContainer.getIncludeConfigurePhase();
-				noChange &= fFollowRepositoryReferencesButton.getSelection() == iuContainer.IsFollowRepositoryReferences();
+				noChange &= fFollowRepositoryReferencesButton.getSelection() == iuContainer.isFollowRepositoryReferences();
 			}
 		}
 		if (noChange) {
@@ -541,8 +623,9 @@ public class EditIUContainerPage extends WizardPage implements IEditBundleContai
 
 		// Init the checkboxes and repo selector combo
 		if (fEditContainer != null) {
-			if (fEditContainer.getRepositories() != null) {
-				uri = fEditContainer.getRepositories()[0];
+			List<URI> repositories = fEditContainer.getRepositories();
+			if (!repositories.isEmpty()) {
+				uri = repositories.get(0);
 			}
 		} else if (settings != null) {
 			String stringURI = settings.get(SETTINGS_SELECTED_REPOSITORY);
@@ -580,18 +663,18 @@ public class EditIUContainerPage extends WizardPage implements IEditBundleContai
 			fAllPlatformsButton.setSelection(fEditContainer.getIncludeAllEnvironments());
 			fIncludeSourceButton.setSelection(fEditContainer.getIncludeSource());
 			fConfigurePhaseButton.setSelection(fEditContainer.getIncludeConfigurePhase());
-			fFollowRepositoryReferencesButton.setSelection(fEditContainer.IsFollowRepositoryReferences());
+			fFollowRepositoryReferencesButton.setSelection(fEditContainer.isFollowRepositoryReferences());
 		} else {
 			// If we are creating a new container, but there is an existing iu container we should use it's settings (otherwise we overwrite them)
 			ITargetLocation[] knownContainers = fTarget.getTargetLocations();
 			if (knownContainers != null) {
 				for (ITargetLocation knownContainer : knownContainers) {
-					if (knownContainer instanceof IUBundleContainer) {
-						fIncludeRequiredButton.setSelection(((IUBundleContainer) knownContainer).getIncludeAllRequired());
-						fAllPlatformsButton.setSelection(((IUBundleContainer) knownContainer).getIncludeAllEnvironments());
-						fIncludeSourceButton.setSelection(((IUBundleContainer) knownContainer).getIncludeSource());
-						fConfigurePhaseButton.setSelection(((IUBundleContainer) knownContainer).getIncludeConfigurePhase());
-						fFollowRepositoryReferencesButton.setSelection(((IUBundleContainer) knownContainer).IsFollowRepositoryReferences());
+					if (knownContainer instanceof IUBundleContainer iuContainer) {
+						fIncludeRequiredButton.setSelection(iuContainer.getIncludeAllRequired());
+						fAllPlatformsButton.setSelection(iuContainer.getIncludeAllEnvironments());
+						fIncludeSourceButton.setSelection(iuContainer.getIncludeSource());
+						fConfigurePhaseButton.setSelection(iuContainer.getIncludeConfigurePhase());
+						fFollowRepositoryReferencesButton.setSelection(iuContainer.isFollowRepositoryReferences());
 					}
 				}
 			}
@@ -603,9 +686,9 @@ public class EditIUContainerPage extends WizardPage implements IEditBundleContai
 			ITargetLocation[] containers = fTarget.getTargetLocations();
 			if (containers != null) {
 				for (ITargetLocation container : containers) {
-					if (container instanceof IUBundleContainer && container != fEditContainer) {
-						fIncludeRequiredButton.setSelection(((IUBundleContainer) container).getIncludeAllRequired());
-						fAllPlatformsButton.setSelection(((IUBundleContainer) container).getIncludeAllEnvironments());
+					if (container instanceof IUBundleContainer iuContainer && iuContainer != fEditContainer) {
+						fIncludeRequiredButton.setSelection(iuContainer.getIncludeAllRequired());
+						fAllPlatformsButton.setSelection(iuContainer.getIncludeAllEnvironments());
 						break;
 					}
 				}
@@ -620,30 +703,26 @@ public class EditIUContainerPage extends WizardPage implements IEditBundleContai
 
 		// If we are editing a bundle check any installable units
 		if (fEditContainer != null) {
-			try {
-				// TODO This code does not do a good job, selecting, revealing, and collapsing all
-				// Only able to check items if we don't have categories
-				fQueryContext.setViewType(org.eclipse.equinox.internal.p2.ui.query.IUViewQueryContext.AVAILABLE_VIEW_FLAT);
-				fAvailableIUGroup.updateAvailableViewState();
-				fAvailableIUGroup.setChecked(fEditContainer.getInstallableUnits());
-				// Make sure view is back in proper state
-				updateViewContext();
-				IInstallableUnit[] units = fAvailableIUGroup.getCheckedLeafIUs();
-				if (units.length > 0) {
-					fAvailableIUGroup.getCheckboxTreeViewer().setSelection(new StructuredSelection(units[0]), true);
-					if (units.length == 1) {
-						fSelectionCount.setText(NLS.bind(Messages.EditIUContainerPage_itemSelected, Integer.toString(units.length)));
-					} else {
-						fSelectionCount.setText(NLS.bind(Messages.EditIUContainerPage_itemsSelected, Integer.toString(units.length)));
-					}
-				} else {
-					fSelectionCount.setText(NLS.bind(Messages.EditIUContainerPage_itemsSelected, Integer.toString(0)));
-				}
-				fAvailableIUGroup.getCheckboxTreeViewer().collapseAll();
-
-			} catch (CoreException e) {
-				PDEPlugin.log(e);
+			// TODO This code does not do a good job, selecting, revealing, and collapsing all
+			// Only able to check items if we don't have categories
+			fQueryContext.setViewType(org.eclipse.equinox.internal.p2.ui.query.IUViewQueryContext.AVAILABLE_VIEW_FLAT);
+			fAvailableIUGroup.updateAvailableViewState();
+			setInstallableUnits(fEditContainer);
+			// Make sure view is back in proper state
+			updateViewContext();
+			IInstallableUnit[] units = fAvailableIUGroup.getCheckedLeafIUs();
+			if (units.length > 0) {
+				fAvailableIUGroup.getCheckboxTreeViewer().setSelection(new StructuredSelection(units[0]), true);
 			}
+			String msg = units.length == 1 ? Messages.EditIUContainerPage_itemSelected
+					: Messages.EditIUContainerPage_itemsSelected;
+			fSelectionCount.setText(NLS.bind(msg, units.length));
+			fAvailableIUGroup.getCheckboxTreeViewer().collapseAll();
 		}
+	}
+
+	private void setInstallableUnits(IUBundleContainer iuContainer) {
+		versionSpecifications = new HashMap<>(iuContainer.getInstallableUnitSpecifications());
+		fAvailableIUGroup.setChecked(versionSpecifications.keySet().toArray());
 	}
 }
