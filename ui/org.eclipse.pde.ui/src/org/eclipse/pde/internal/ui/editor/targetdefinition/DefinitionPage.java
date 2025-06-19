@@ -18,7 +18,9 @@ import org.eclipse.pde.core.target.ITargetDefinition;
 import org.eclipse.pde.internal.ui.IHelpContextIds;
 import org.eclipse.pde.internal.ui.PDEPlugin;
 import org.eclipse.pde.internal.ui.PDEUIMessages;
-import org.eclipse.pde.internal.ui.editor.FormLayoutFactory;
+import org.eclipse.swt.SWT;
+import org.eclipse.swt.layout.BorderData;
+import org.eclipse.swt.layout.BorderLayout;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.forms.IManagedForm;
@@ -74,8 +76,10 @@ public class DefinitionPage extends FormPage implements IHyperlinkListener {
 
 	private void fillBody(IManagedForm managedForm, FormToolkit toolkit) {
 		Composite body = managedForm.getForm().getBody();
-		body.setLayout(FormLayoutFactory.createFormGridLayout(true, 1));
-		managedForm.addPart(new InformationSection(this, body));
+		body.setLayout(new BorderLayout());
+		InformationSection informationSection = new InformationSection(this, body);
+		informationSection.getSection().setLayoutData(new BorderData(SWT.TOP));
+		managedForm.addPart(informationSection);
 		managedForm.addPart(new LocationsSection(this, body));
 	}
 
