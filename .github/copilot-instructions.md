@@ -82,6 +82,27 @@ mvn clean verify -Dmaven.repo.local=$WORKSPACE/.m2/repository \
 
 **Docs:** `docs/API_Tools.md` for comprehensive API Tools documentation.
 
+## OSGi API Guidelines
+
+**Prefer Standard OSGi APIs:** Use `org.osgi.resource.Resource` and `org.osgi.framework.wiring.BundleRevision` over legacy `org.eclipse.osgi.service.resolver.BundleDescription` when possible.
+
+**Migration Path:** When adding new functionality or refactoring existing code:
+- For **internal/private methods**: Directly use `Resource`/`BundleRevision` APIs
+- For **public APIs**: Add new methods accepting `Resource`/`BundleRevision`, deprecate old ones
+- Use `aQute.bnd.osgi.resource.ResourceUtils` (already available) for common operations like getting identity and version
+- Always check for null when working with `BundleWiring` (unresolved bundles return null)
+
+**Key Patterns:**
+- Check if fragment: `(revision.getTypes() & BundleRevision.TYPE_FRAGMENT) != 0`
+- Get dependencies: Use `BundleWiring.getRequiredWires(namespace)` 
+- Get symbolic name: `ResourceUtils.getIdentity(resource)` or `bundleRevision.getSymbolicName()`
+- Get version: `ResourceUtils.getVersion(resource)` or `bundleRevision.getVersion()`
+- Get fragments: Query `wiring.getProvidedWires(HostNamespace.HOST_NAMESPACE)`
+
+**Reference Examples:** `DependencyManager` (ui/org.eclipse.pde.core) demonstrates proper use of new OSGi Wiring API.
+
+**Full Documentation:** See `docs/OSGi_Resource_API_Migration.md` for comprehensive migration guide with examples.
+
 ## Key Notes
 
 **Tycho:** Eclipse-specific Maven extension managing OSGi dependencies, P2 repos, Eclipse metadata (MANIFEST.MF, plugin.xml, feature.xml).
@@ -90,4 +111,4 @@ mvn clean verify -Dmaven.repo.local=$WORKSPACE/.m2/repository \
 
 **Development:** Use Oomph for IDE setup: `https://raw.githubusercontent.com/eclipse-pde/eclipse.pde/master/releng/org.eclipse.pde.setup/PDEConfiguration.setup`
 
-**Trust These Instructions:** Only search if incomplete, encountering undocumented errors, or instructions appear outdated. Consult: `Jenkinsfile` (CI config), `README.md`, `docs/` (API Tools, FAQ, User Guide), `.github/workflows/` (pipelines).
+**Trust These Instructions:** Only search if incomplete, encountering undocumented errors, or instructions appear outdated. Consult: `Jenkinsfile` (CI config), `README.md`, `docs/` (API Tools, FAQ, User Guide, OSGi Resource API Migration), `.github/workflows/` (pipelines).
