@@ -80,6 +80,8 @@ public class FeatureSpecSection extends PDESection {
 
 	private Button fIncludesSourcesCheckbox;
 
+	private FormEntry fDeprecatedText;
+
 	public FeatureSpecSection(FeatureFormPage page, Composite parent) {
 		super(page, parent, Section.DESCRIPTION);
 		getSection().setText(PDEUIMessages.FeatureEditor_SpecSection_title);
@@ -99,6 +101,7 @@ public class FeatureSpecSection extends PDESection {
 		}
 		fUpdateSiteUrlText.commit();
 		fUpdateSiteNameText.commit();
+		fDeprecatedText.commit();
 		super.commit(onSave);
 	}
 
@@ -393,6 +396,19 @@ public class FeatureSpecSection extends PDESection {
 			feature.setIncludingSources(isSelected);
 		}));
 
+		fDeprecatedText = new FormEntry(container, toolkit, PDEUIMessages.FeatureSpecSection_deprecated, null, false);
+		fDeprecatedText.setFormEntryListener(new FormEntryAdapter(this) {
+			@Override
+			public void textValueChanged(FormEntry text) {
+				try {
+					String value = text.getValue();
+					feature.setDeprecated(value != null && value.trim().length() > 0 ? value.trim() : null);
+				} catch (CoreException e) {
+					PDEPlugin.logException(e);
+				}
+			}
+		});
+
 		GridData gd = (GridData) fIdText.getText().getLayoutData();
 		gd.widthHint = 150;
 
@@ -464,6 +480,7 @@ public class FeatureSpecSection extends PDESection {
 			}
 			fUpdateSiteUrlText.getText().setEditable(false);
 			fUpdateSiteNameText.getText().setEditable(false);
+			fDeprecatedText.getText().setEditable(false);
 		}
 		model.addModelChangedListener(this);
 	}
@@ -531,6 +548,7 @@ public class FeatureSpecSection extends PDESection {
 		}
 		setUpdateSiteUrlText();
 		setUpdateSiteNameText();
+		setIfDefined(fDeprecatedText, feature.getDeprecated());
 		super.refresh();
 	}
 
@@ -579,6 +597,7 @@ public class FeatureSpecSection extends PDESection {
 		}
 		fUpdateSiteNameText.cancelEdit();
 		fUpdateSiteUrlText.cancelEdit();
+		fDeprecatedText.cancelEdit();
 		super.cancelEdit();
 	}
 

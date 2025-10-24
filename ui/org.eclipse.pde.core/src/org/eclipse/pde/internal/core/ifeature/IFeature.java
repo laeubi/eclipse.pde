@@ -60,6 +60,7 @@ public interface IFeature extends IFeatureObject, IVersionable, IEnvironment {
 	public static final String P_COLLOCATION_AFFINITY = "colocation-affinity"; //$NON-NLS-1$
 	public static final String P_APPLICATION = "application"; //$NON-NLS-1$
 	public static final String P_SOURCES = "include-sources"; //$NON-NLS-1$
+	public static final String P_DEPRECATED = "deprecated"; //$NON-NLS-1$
 
 	public static final int INFO_DESCRIPTION = 0;
 	public static final int INFO_COPYRIGHT = 1;
@@ -262,6 +263,28 @@ public interface IFeature extends IFeatureObject, IVersionable, IEnvironment {
 	public boolean isIncludingSources();
 
 	void setIncludingSources(boolean b);
+
+	/**
+	 * Returns the deprecation message for this feature.
+	 * If the feature is not deprecated, returns <code>null</code>.
+	 * If the feature is deprecated but has no custom message, returns an empty string.
+	 *
+	 * @return the deprecation message or <code>null</code> if not deprecated
+	 * @since 3.21
+	 */
+	String getDeprecated();
+
+	/**
+	 * Sets the deprecation status and message for this feature.
+	 * Pass <code>null</code> to mark the feature as not deprecated.
+	 * Pass an empty string to mark as deprecated with no custom message.
+	 * Pass any other value to set a custom deprecation message.
+	 *
+	 * @param deprecated the deprecation message, or <code>null</code> to clear deprecation
+	 * @throws CoreException if the model is not editable
+	 * @since 3.21
+	 */
+	void setDeprecated(String deprecated) throws CoreException;
 
 	public void swap(IFeatureChild feature1, IFeatureChild feature2);
 }
