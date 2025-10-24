@@ -44,9 +44,11 @@
 - Select multiple versions from the workspace list (e.g., `1.2.0` and `1.8.0`)
 
 **Expected Behavior:**
-- The version range should be set based on the minimum and maximum selected versions
-- For example, selecting `1.2.0` and `1.8.0` should result in `[1.2.0, 2.0.0)`
-- The upper bound should be computed based on the maximum selected version
+- The version range should be set based on the minimum selected version and a computed upper bound
+- For example, selecting `1.2.0` and `1.8.0` should result in `[1.2.0, 2.0.0)` (not `[1.2.0, 1.8.0)`)
+- This ensures all selected versions are included in the range (inclusive of both selected versions)
+- The upper bound follows OSGi semantic versioning (next major version, exclusive)
+- **Note:** This is an improvement over the original behavior which would set `[1.2.0, 1.8.0)` excluding version `1.8.0`
 
 ### Test Scenario 5: Import Package dependencies
 **Setup:**
