@@ -47,7 +47,9 @@ public class FeatureDeprecatedTestCase {
 		String xml = toXml(feature);
 		
 		// Verify the XML contains the deprecated attribute
-		assert xml.contains("deprecated=\"This feature is deprecated. Use test.feature.v2 instead.\"");
+		assertNotNull("XML should not be null", xml);
+		assert xml.contains("deprecated=\"This feature is deprecated. Use test.feature.v2 instead.\"") 
+			: "XML should contain deprecated attribute with message";
 		
 		// Parse it back
 		Feature parsedFeature = fromXml(xml);
@@ -67,7 +69,9 @@ public class FeatureDeprecatedTestCase {
 		String xml = toXml(feature);
 		
 		// Verify the XML contains the deprecated attribute
-		assert xml.contains("deprecated=\"true\"");
+		assertNotNull("XML should not be null", xml);
+		assert xml.contains("deprecated=\"true\"")
+			: "XML should contain deprecated='true'";
 		
 		// Parse it back
 		Feature parsedFeature = fromXml(xml);
@@ -87,7 +91,9 @@ public class FeatureDeprecatedTestCase {
 		String xml = toXml(feature);
 		
 		// Verify the XML does not contain the deprecated attribute
-		assert !xml.contains("deprecated=");
+		assertNotNull("XML should not be null", xml);
+		assert !xml.contains("deprecated=")
+			: "XML should not contain deprecated attribute";
 		
 		// Parse it back
 		Feature parsedFeature = fromXml(xml);
@@ -110,7 +116,9 @@ public class FeatureDeprecatedTestCase {
 		String xml = toXml(feature);
 		
 		// Verify the XML does not contain the deprecated attribute
-		assert !xml.contains("deprecated=");
+		assertNotNull("XML should not be null", xml);
+		assert !xml.contains("deprecated=")
+			: "XML should not contain deprecated attribute after clearing";
 		
 		// Parse it back
 		Feature parsedFeature = fromXml(xml);
