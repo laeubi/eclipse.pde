@@ -223,6 +223,10 @@ public class JavaResolutionFactory {
 							}
 							IPluginImport impt = base.getPluginFactory().createImport();
 							impt.setId(pluginId);
+							// Add version constraint for junit-jupiter-api to restrict to version 5.x
+							if ("junit-jupiter-api".equals(pluginId)) { //$NON-NLS-1$
+								impt.setVersion("[5,6)"); //$NON-NLS-1$
+							}
 							base.getPluginBase().add(impt);
 						} else {
 							IPluginImport[] imports = base.getPluginBase().getImports();
