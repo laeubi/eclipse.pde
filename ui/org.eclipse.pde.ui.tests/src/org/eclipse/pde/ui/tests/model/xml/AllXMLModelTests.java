@@ -14,6 +14,7 @@
 package org.eclipse.pde.ui.tests.model.xml;
 
 import org.eclipse.pde.core.tests.internal.feature.FeatureDataTestCase;
+import org.eclipse.pde.core.tests.internal.feature.FeatureDeprecatedTestCase;
 import org.junit.platform.suite.api.SelectClasses;
 import org.junit.platform.suite.api.Suite;
 
@@ -25,6 +26,6 @@ import org.junit.platform.suite.api.Suite;
 	 */
 	// suite.addTest(SwapXMLModelTestCase.suite());
 	StructureXMLModelTestCase.class, ExtensionAttributeTestCase.class, ExtensionElementTestCase.class,
-	ManifestEditorSpellCheckTestCase.class, FeatureDataTestCase.class })
+	ManifestEditorSpellCheckTestCase.class, FeatureDataTestCase.class, FeatureDeprecatedTestCase.class })
 public class AllXMLModelTests {
 }
