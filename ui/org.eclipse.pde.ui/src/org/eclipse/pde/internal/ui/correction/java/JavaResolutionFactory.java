@@ -225,7 +225,7 @@ public class JavaResolutionFactory {
 							impt.setId(pluginId);
 							// Add version constraint for junit-jupiter-api to restrict to version 5.x
 							if ("junit-jupiter-api".equals(pluginId)) { //$NON-NLS-1$
-								impt.setVersion("[5,6)"); //$NON-NLS-1$
+								impt.setVersion("[5.0.0,6.0.0)"); //$NON-NLS-1$
 							}
 							base.getPluginBase().add(impt);
 						} else {
