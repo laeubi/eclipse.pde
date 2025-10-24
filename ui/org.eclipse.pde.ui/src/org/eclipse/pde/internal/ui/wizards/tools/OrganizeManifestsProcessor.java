@@ -268,7 +268,7 @@ public class OrganizeManifestsProcessor extends RefactoringProcessor implements 
 		if (fRemoveUnusedFilters) {
 			subMonitor.subTask(NLS.bind(PDEUIMessages.OrganizeManifestsOperation_unusedFilters, projectName));
 			if (!subMonitor.isCanceled()) {
-				OrganizeManifest.removeUnusedApiFilters(fCurrentProject, subMonitor.split(1));
+				OrganizeManifest.runOrganizeManifestParticipants(fCurrentProject, subMonitor.split(1));
 			}
 		}
 		if (fComputeImports) {

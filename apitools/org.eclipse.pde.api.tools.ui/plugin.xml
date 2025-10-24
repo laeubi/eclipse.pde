@@ -600,4 +600,11 @@
             icon="$nl$/icons/full/obj16/eclipse16.svg">
       </image>
    </extension>
+   <extension
+         point="org.eclipse.pde.ui.organizeManifestParticipants">
+      <participant
+            class="org.eclipse.pde.api.tools.ui.internal.wizards.RemoveUnusedFiltersParticipant"
+            name="%RemoveUnusedFiltersParticipant.name">
+      </participant>
+   </extension>
 </plugin>
