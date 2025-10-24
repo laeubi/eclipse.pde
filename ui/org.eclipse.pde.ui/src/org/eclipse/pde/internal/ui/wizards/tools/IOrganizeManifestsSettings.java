@@ -30,4 +30,5 @@ public interface IOrganizeManifestsSettings {
 	public static final String PROP_REMOVE_USELESSFILES = "OrganizeManifests.General.cleanup.removeUselessFiles"; //$NON-NLS-1$
 	public static final String PROP_NLS_PATH = "OrganizeManifests.Translation.nls"; //$NON-NLS-1$
 	public static final String PROP_UNUSED_KEYS = "OrganizeManifests.Translation.unusedKeys"; //$NON-NLS-1$
+	public static final String PROP_REMOVE_UNUSED_FILTERS = "OrganizeManifests.General.removeUnusedFilters"; //$NON-NLS-1$
 }

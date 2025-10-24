@@ -28,6 +28,7 @@ import java.util.regex.Pattern;
 
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IFolder;
+import org.eclipse.core.resources.IMarker;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.IWorkspaceRoot;
@@ -36,6 +37,7 @@ import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.Status;
+import org.eclipse.core.runtime.SubMonitor;
 import org.eclipse.core.runtime.preferences.IEclipsePreferences;
 import org.eclipse.jdt.core.IClasspathEntry;
 import org.eclipse.jdt.core.IJavaElement;
@@ -664,6 +666,121 @@ public class OrganizeManifest implements IOrganizeManifestsSettings {
 		MultiTextEdit multiEdit = new MultiTextEdit();
 		multiEdit.addChildren(edits);
 		return multiEdit;
+	}
+
+	/**
+	 * Removes unused API filters from the project by finding markers and removing corresponding filters.
+	 * Uses reflection to avoid hard dependency on API Tools.
+	 * 
+	 * @param project the project to remove unused filters from
+	 * @param monitor progress monitor
+	 */
+	public static void removeUnusedApiFilters(IProject project, IProgressMonitor monitor) {
+		try {
+			// Check if API Tools classes are available
+			Class<?> apiBaselineManagerClass = Class.forName("org.eclipse.pde.api.tools.internal.ApiBaselineManager"); //$NON-NLS-1$
+			Class<?> iApiComponentClass = Class.forName("org.eclipse.pde.api.tools.internal.provisional.model.IApiComponent"); //$NON-NLS-1$
+			Class<?> iApiFilterStoreClass = Class.forName("org.eclipse.pde.api.tools.internal.provisional.IApiFilterStore"); //$NON-NLS-1$
+			Class<?> iApiProblemFilterClass = Class.forName("org.eclipse.pde.api.tools.internal.provisional.problems.IApiProblemFilter"); //$NON-NLS-1$
+			Class<?> apiProblemFactoryClass = Class.forName("org.eclipse.pde.api.tools.internal.problems.ApiProblemFactory"); //$NON-NLS-1$
+			Class<?> projectComponentClass = Class.forName("org.eclipse.pde.api.tools.internal.model.ProjectComponent"); //$NON-NLS-1$
+			
+			// Find all unused filter markers
+			IMarker[] markers = project.findMarkers("org.eclipse.pde.api.tools.unused_filters", false, IResource.DEPTH_INFINITE); //$NON-NLS-1$
+			if (markers.length == 0) {
+				return;
+			}
+			
+			SubMonitor subMonitor = SubMonitor.convert(monitor, markers.length);
+			
+			// Get API baseline manager instance
+			Object manager = apiBaselineManagerClass.getMethod("getManager").invoke(null); //$NON-NLS-1$
+			Object baseline = manager.getClass().getMethod("getWorkspaceBaseline").invoke(manager); //$NON-NLS-1$
+			
+			// Group filters by API component
+			java.util.HashMap<Object, java.util.Set<Object>> map = new java.util.HashMap<>();
+			
+			for (IMarker marker : markers) {
+				if (subMonitor.isCanceled()) {
+					break;
+				}
+				
+				// Resolve the filter for this marker
+				Object filter = resolveFilterFromMarkerReflective(marker, baseline, project, apiProblemFactoryClass, iApiFilterStoreClass);
+				if (filter == null) {
+					subMonitor.worked(1);
+					continue;
+				}
+				
+				// Get the API component for this project
+				Object component = baseline.getClass().getMethod("getApiComponent", IProject.class).invoke(baseline, project); //$NON-NLS-1$
+				
+				if (component != null && projectComponentClass.isInstance(component)) {
+					java.util.Set<Object> filters = map.get(component);
+					if (filters == null) {
+						filters = new java.util.HashSet<>();
+						map.put(component, filters);
+					}
+					filters.add(filter);
+				}
+				subMonitor.worked(1);
+			}
+			
+			// Batch remove the filters
+			for (java.util.Map.Entry<Object, java.util.Set<Object>> entry : map.entrySet()) {
+				try {
+					Object component = entry.getKey();
+					java.util.Set<Object> filters = entry.getValue();
+					Object store = component.getClass().getMethod("getFilterStore").invoke(component); //$NON-NLS-1$
+					Object[] filterArray = filters.toArray((Object[]) java.lang.reflect.Array.newInstance(iApiProblemFilterClass, filters.size()));
+					store.getClass().getMethod("removeFilters", filterArray.getClass()).invoke(store, (Object) filterArray); //$NON-NLS-1$
+				} catch (Exception ce) {
+					PDECore.log(ce);
+				}
+			}
+		} catch (ClassNotFoundException e) {
+			// API Tools not available, skip silently
+		} catch (Exception e) {
+			PDECore.log(e);
+		}
+	}
+
+	/**
+	 * Resolves the IApiProblemFilter from a marker using reflection
+	 */
+	private static Object resolveFilterFromMarkerReflective(IMarker marker, Object baseline, IProject project, 
+			Class<?> apiProblemFactoryClass, Class<?> iApiFilterStoreClass) {
+		try {
+			String filterhandle = marker.getAttribute("filterhandle", null); //$NON-NLS-1$
+			if (filterhandle == null) {
+				return null;
+			}
+			String[] values = filterhandle.split("%\\]"); //$NON-NLS-1$
+			if (values.length < 2) {
+				return null;
+			}
+			
+			Object component = baseline.getClass().getMethod("getApiComponent", IProject.class).invoke(baseline, project); //$NON-NLS-1$
+			if (component != null) {
+				Object store = component.getClass().getMethod("getFilterStore").invoke(component); //$NON-NLS-1$
+				IPath path = IPath.fromOSString(values[1]);
+				IResource resource = project.findMember(path);
+				if (resource == null) {
+					resource = project.getFile(path);
+				}
+				int hashcode = (Integer) apiProblemFactoryClass.getMethod("getProblemHashcode", String.class).invoke(null, filterhandle); //$NON-NLS-1$
+				Object[] filters = (Object[]) store.getClass().getMethod("getFilters", IResource.class).invoke(store, resource); //$NON-NLS-1$
+				for (Object filter : filters) {
+					Object problem = filter.getClass().getMethod("getUnderlyingProblem").invoke(filter); //$NON-NLS-1$
+					if (problem.hashCode() == hashcode) {
+						return filter;
+					}
+				}
+			}
+		} catch (Exception e) {
+			// Ignore, return null
+		}
+		return null;
 	}
 
 }
