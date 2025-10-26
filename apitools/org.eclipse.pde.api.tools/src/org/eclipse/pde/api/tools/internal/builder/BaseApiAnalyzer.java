@@ -2374,7 +2374,7 @@ public class BaseApiAnalyzer implements IApiAnalyzer {
 	
 	/**
 	 * Determines if we should check for inherited members when processing this delta.
-	 * We need to check inheritance when a method or field is added to a class.
+	 * We need to check inheritance when a method or field is added to a class or interface.
 	 */
 	private boolean shouldCheckInheritance(IDelta delta) {
 		int elementType = delta.getElementType();
@@ -2387,6 +2387,10 @@ public class BaseApiAnalyzer implements IApiAnalyzer {
 		}
 		// Check for field addition to a class (fields are also inherited)
 		if (elementType == IDelta.CLASS_ELEMENT_TYPE && kind == IDelta.ADDED && flags == IDelta.FIELD) {
+			return true;
+		}
+		// Check for method addition to an interface (default methods are inherited)
+		if (elementType == IDelta.INTERFACE_ELEMENT_TYPE && kind == IDelta.ADDED && flags == IDelta.METHOD) {
 			return true;
 		}
 		return false;
@@ -2444,9 +2448,10 @@ public class BaseApiAnalyzer implements IApiAnalyzer {
 	}
 	
 	/**
-	 * Checks if the given type extends (directly or indirectly) the specified base type.
+	 * Checks if the given type extends or implements (directly or indirectly) the specified base type.
 	 */
 	private boolean extendsType(IApiType type, String baseTypeName) throws CoreException {
+		// Check superclass hierarchy
 		IApiType current = type;
 		while (current != null) {
 			IApiType superclass = current.getSuperclass();
@@ -2458,6 +2463,50 @@ public class BaseApiAnalyzer implements IApiAnalyzer {
 			}
 			current = superclass;
 		}
+		
+		// Check interface hierarchy
+		return implementsInterface(type, baseTypeName);
+	}
+	
+	/**
+	 * Checks if the given type implements (directly or indirectly) the specified interface.
+	 */
+	private boolean implementsInterface(IApiType type, String interfaceName) throws CoreException {
+		Set<String> visited = new HashSet<>();
+		return implementsInterfaceHelper(type, interfaceName, visited);
+	}
+	
+	private boolean implementsInterfaceHelper(IApiType type, String interfaceName, Set<String> visited) throws CoreException {
+		if (type == null || !visited.add(type.getName())) {
+			return false;
+		}
+		
+		// Check direct interfaces
+		String[] interfaceNames = type.getSuperInterfaceNames();
+		if (interfaceNames != null) {
+			for (String iface : interfaceNames) {
+				// The interface name might be in binary format (with $ for inner types)
+				if (iface.replace('$', '.').equals(interfaceName)) {
+					return true;
+				}
+				// Recursively check super-interfaces
+				try {
+					IApiType ifaceType = type.getApiComponent().findType(iface);
+					if (ifaceType != null && implementsInterfaceHelper(ifaceType, interfaceName, visited)) {
+						return true;
+					}
+				} catch (CoreException e) {
+					// Continue checking other interfaces
+				}
+			}
+		}
+		
+		// Check interfaces implemented by superclass
+		IApiType superclass = type.getSuperclass();
+		if (superclass != null) {
+			return implementsInterfaceHelper(superclass, interfaceName, visited);
+		}
+		
 		return false;
 	}
 	
