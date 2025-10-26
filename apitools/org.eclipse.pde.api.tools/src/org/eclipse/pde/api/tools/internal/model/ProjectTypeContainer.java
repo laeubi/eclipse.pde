@@ -189,13 +189,16 @@ public class ProjectTypeContainer extends ApiElement implements IApiTypeContaine
 	 */
 	private static void collectPackageNamesFromJDT(Set<String> collector, IPackageFragmentRoot root) throws CoreException {
 		IJavaElement[] children = root.getChildren();
-		for (IJavaElement element : children) {
-			IPackageFragment fragment = (IPackageFragment) element;
-			String name = fragment.getElementName();
-			if (name.length() == 0) {
-				name = Util.DEFAULT_PACKAGE_NAME;
+		if (children != null) {
+			for (IJavaElement element : children) {
+				if (element instanceof IPackageFragment fragment) {
+					String name = fragment.getElementName();
+					if (name.length() == 0) {
+						name = Util.DEFAULT_PACKAGE_NAME;
+					}
+					collector.add(name);
+				}
 			}
-			collector.add(name);
 		}
 	}
 
