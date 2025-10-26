@@ -1134,7 +1134,7 @@ public class BundleErrorReporter extends JarManifestErrorReporter {
 			if (upperBoundSeverity != CompilerFlags.IGNORE && !hasUpperBound(versionRange)) {
 				VirtualMarker marker = report(
 						NLS.bind(PDECoreMessages.BundleErrorReporter_MissingUpperBoundForBundle, element.getValue()),
-						getPackageLine(header, element), upperBoundSeverity, PDEMarkerFactory.CAT_OTHER);
+						getPackageLine(header, element), upperBoundSeverity, PDEMarkerFactory.M_MISSING_UPPER_BOUND_REQ_BUNDLE, PDEMarkerFactory.CAT_OTHER);
 				marker.setAttribute("bundleId", element.getValue()); //$NON-NLS-1$
 				addMarkerAttribute(marker, PDEMarkerFactory.compilerKey, CompilerFlags.P_MISSING_UPPER_VERSION_BOUND_REQ_BUNDLE);
 			}
@@ -1543,7 +1543,8 @@ public class BundleErrorReporter extends JarManifestErrorReporter {
 			if (upperBoundSeverity != CompilerFlags.IGNORE && !hasUpperBound(version)) {
 				VirtualMarker marker = report(
 						NLS.bind(PDECoreMessages.BundleErrorReporter_MissingUpperBoundForPackage, element.getValue()),
-						getPackageLine(header, element), upperBoundSeverity, PDEMarkerFactory.CAT_OTHER);
+						getPackageLine(header, element), upperBoundSeverity, PDEMarkerFactory.M_MISSING_UPPER_BOUND_IMP_PKG, PDEMarkerFactory.CAT_OTHER);
+				marker.setAttribute("packageName", element.getValue()); //$NON-NLS-1$
 				addMarkerAttribute(marker, PDEMarkerFactory.compilerKey, CompilerFlags.P_MISSING_UPPER_VERSION_BOUND_IMP_PKG);
 			}
 		}
@@ -1587,7 +1588,8 @@ public class BundleErrorReporter extends JarManifestErrorReporter {
 				if (severity != CompilerFlags.IGNORE) {
 					VirtualMarker marker = report(
 							NLS.bind(PDECoreMessages.BundleErrorReporter_ImportPkgMissingVersionForExportWithoutVersion, packageName),
-							getPackageLine(header, element), severity, PDEMarkerFactory.CAT_OTHER);
+							getPackageLine(header, element), severity, PDEMarkerFactory.M_IMP_PKG_NO_VERSION_EXPORT_NO_VERSION, PDEMarkerFactory.CAT_OTHER);
+					marker.setAttribute("packageName", packageName); //$NON-NLS-1$
 					addMarkerAttribute(marker, PDEMarkerFactory.compilerKey, CompilerFlags.P_IMP_PKG_MISSING_VERSION_FOR_EXPORT_WITHOUT_VERSION);
 				}
 			} else {
@@ -1918,31 +1920,38 @@ public class BundleErrorReporter extends JarManifestErrorReporter {
 	 */
 	private boolean hasUpperBound(String versionRangeStr) {
 		try {
-			// Parse to validate it's a valid version range
-			new VersionRange(versionRangeStr);
+			VersionRange range = new VersionRange(versionRangeStr);
+			Version right = range.getRight();
 			
-			// Use string-based detection which is more reliable than checking Version objects
-			// The OSGi spec defines several forms:
-			// - "1.0.0" => [1.0.0,∞) - no upper bound
-			// - "[1.0.0,2.0.0)" => has upper bound
-			// - "[1.0.0,)" => no upper bound
+			// A version range has no upper bound if:
+			// 1. getRight() returns null (shouldn't happen for valid ranges)
+			// 2. getRight() returns the same as getLeft() and it's a single version shorthand (e.g., "1.0.0")
+			// 3. The range string explicitly has no upper bound (e.g., "[1.0.0,)")
 			
-			if (!versionRangeStr.contains(",")) { //$NON-NLS-1$
-				// Single version without brackets like "1.0.0" is interpreted as [1.0.0,∞)
-				// Only versions within brackets like "[1.0.0]" have implicit upper bound equal to lower
-				return versionRangeStr.trim().startsWith("[") || versionRangeStr.trim().startsWith("("); //$NON-NLS-1$ //$NON-NLS-2$
-			}
-			
-			// For ranges with comma, check if there's a version number after the comma
-			// Ranges like "[1.0.0,)" or "[1.0.0,]" have no upper bound
-			int commaIndex = versionRangeStr.lastIndexOf(',');
-			String afterComma = versionRangeStr.substring(commaIndex + 1).trim();
-			// If after comma is just a closing bracket/paren, no upper bound
-			if (afterComma.equals("]") || afterComma.equals(")")) { //$NON-NLS-1$ //$NON-NLS-2$
+			if (right == null) {
 				return false;
 			}
-			// Otherwise, there should be a version number, which means we have an upper bound
-			return !afterComma.isEmpty();
+			
+			// Check if this is a single version shorthand like "1.0.0" which means [1.0.0,∞)
+			// In this case, getLeft() and getRight() would be equal, but we need to check the string
+			Version left = range.getLeft();
+			if (left.equals(right) && !versionRangeStr.contains(",")) { //$NON-NLS-1$
+				// This is a single version shorthand without explicit range, which is unbounded
+				return false;
+			}
+			
+			// For explicit ranges, check if the upper bound is specified
+			// Ranges like "[1.0.0,)" have a closing bracket/paren but no version after the comma
+			if (versionRangeStr.contains(",")) { //$NON-NLS-1$
+				int commaIndex = versionRangeStr.lastIndexOf(',');
+				String afterComma = versionRangeStr.substring(commaIndex + 1).trim();
+				// If only closing bracket/paren after comma, no upper bound
+				if (afterComma.equals("]") || afterComma.equals(")")) { //$NON-NLS-1$ //$NON-NLS-2$
+					return false;
+				}
+			}
+			
+			return true;
 		} catch (IllegalArgumentException e) {
 			// If we can't parse it, conservatively assume no upper bound
 			return false;
