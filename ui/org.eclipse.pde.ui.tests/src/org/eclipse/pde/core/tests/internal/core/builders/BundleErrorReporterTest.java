@@ -94,9 +94,8 @@ public class BundleErrorReporterTest {
 
 	@Test
 	public void testWarningOnMissingUpperBoundForRequireBundle() throws Exception {
-		IProject project = ProjectUtils.createPluginProject(manifest.getProject().getName()).getProject();
+		ProjectUtils.createPluginProject(manifest.getProject().getName());
 
-		IFile manifest = project.getFile("META-INF/MANIFEST.MF");
 		PDEModelUtility.modifyModel(new ModelModification(manifest) {
 			@Override
 			protected void modifyModel(IBaseModel model, IProgressMonitor monitor) throws CoreException {
@@ -114,9 +113,8 @@ public class BundleErrorReporterTest {
 
 	@Test
 	public void testNoWarningWhenRequireBundleHasUpperBound() throws Exception {
-		IProject project = ProjectUtils.createPluginProject(manifest.getProject().getName()).getProject();
+		ProjectUtils.createPluginProject(manifest.getProject().getName());
 
-		IFile manifest = project.getFile("META-INF/MANIFEST.MF");
 		PDEModelUtility.modifyModel(new ModelModification(manifest) {
 			@Override
 			protected void modifyModel(IBaseModel model, IProgressMonitor monitor) throws CoreException {
@@ -133,9 +131,8 @@ public class BundleErrorReporterTest {
 
 	@Test
 	public void testWarningOnMissingUpperBoundForImportPackage() throws Exception {
-		IProject project = ProjectUtils.createPluginProject(manifest.getProject().getName()).getProject();
+		ProjectUtils.createPluginProject(manifest.getProject().getName());
 
-		IFile manifest = project.getFile("META-INF/MANIFEST.MF");
 		PDEModelUtility.modifyModel(new ModelModification(manifest) {
 			@Override
 			protected void modifyModel(IBaseModel model, IProgressMonitor monitor) throws CoreException {
@@ -153,9 +150,8 @@ public class BundleErrorReporterTest {
 
 	@Test
 	public void testNoWarningWhenImportPackageHasUpperBound() throws Exception {
-		IProject project = ProjectUtils.createPluginProject(manifest.getProject().getName()).getProject();
+		ProjectUtils.createPluginProject(manifest.getProject().getName());
 
-		IFile manifest = project.getFile("META-INF/MANIFEST.MF");
 		PDEModelUtility.modifyModel(new ModelModification(manifest) {
 			@Override
 			protected void modifyModel(IBaseModel model, IProgressMonitor monitor) throws CoreException {
@@ -172,9 +168,8 @@ public class BundleErrorReporterTest {
 
 	@Test
 	public void testWarningOnRequireBundleWithOpenEndedRange() throws Exception {
-		IProject project = ProjectUtils.createPluginProject(manifest.getProject().getName()).getProject();
+		ProjectUtils.createPluginProject(manifest.getProject().getName());
 
-		IFile manifest = project.getFile("META-INF/MANIFEST.MF");
 		PDEModelUtility.modifyModel(new ModelModification(manifest) {
 			@Override
 			protected void modifyModel(IBaseModel model, IProgressMonitor monitor) throws CoreException {
@@ -191,9 +186,8 @@ public class BundleErrorReporterTest {
 
 	@Test
 	public void testWarningOnImportPackageWithOpenEndedRange() throws Exception {
-		IProject project = ProjectUtils.createPluginProject(manifest.getProject().getName()).getProject();
+		ProjectUtils.createPluginProject(manifest.getProject().getName());
 
-		IFile manifest = project.getFile("META-INF/MANIFEST.MF");
 		PDEModelUtility.modifyModel(new ModelModification(manifest) {
 			@Override
 			protected void modifyModel(IBaseModel model, IProgressMonitor monitor) throws CoreException {

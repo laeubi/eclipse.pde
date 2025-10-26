@@ -1918,23 +1918,18 @@ public class BundleErrorReporter extends JarManifestErrorReporter {
 	 */
 	private boolean hasUpperBound(String versionRangeStr) {
 		try {
-			VersionRange range = new VersionRange(versionRangeStr);
-			Version right = range.getRight();
+			// Parse to validate it's a valid version range
+			new VersionRange(versionRangeStr);
 			
-			// Check if the right (upper) version is unbounded
-			// OSGi uses a special MAX_VERSION constant to represent infinity
-			// If right equals MAX_VERSION, the range is unbounded
-			if (right != null && right.equals(Version.emptyVersion)) {
-				// Empty version as upper bound means unbounded
-				return false;
-			}
+			// Use string-based detection which is more reliable than checking Version objects
+			// The OSGi spec defines several forms:
+			// - "1.0.0" => [1.0.0,∞) - no upper bound
+			// - "[1.0.0,2.0.0)" => has upper bound
+			// - "[1.0.0,)" => no upper bound
 			
-			// Check for Version.MAX_VERSION which is typically Integer.MAX_VALUE.Integer.MAX_VALUE.Integer.MAX_VALUE
-			// A range like "[1.0.0,∞)" will have getRight() return a very large version
-			// The simplest check: if a version range doesn't contain a comma, it's a single version shorthand
 			if (!versionRangeStr.contains(",")) { //$NON-NLS-1$
 				// Single version without brackets like "1.0.0" is interpreted as [1.0.0,∞)
-				// Only versions within brackets like "[1.0.0]" have bounds
+				// Only versions within brackets like "[1.0.0]" have implicit upper bound equal to lower
 				return versionRangeStr.trim().startsWith("[") || versionRangeStr.trim().startsWith("("); //$NON-NLS-1$ //$NON-NLS-2$
 			}
 			
