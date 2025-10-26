@@ -299,6 +299,11 @@ public class WorkspaceDeltaProcessor implements IElementChangedListener, IResour
 
 	/**
 	 * Processes resource change events
+	 * 
+	 * @param initialResource the resource associated with the event (may be null for workspace-level events)
+	 * @param eventType the type of event (e.g., PRE_BUILD, PRE_CLOSE, PRE_DELETE)
+	 * @param buildKind the kind of build (for PRE_BUILD events)
+	 * @param delta the resource delta (may be null)
 	 */
 	void processResourceChange(IResource initialResource, int eventType, int buildKind, IResourceDelta delta) {
 		IResource resource = initialResource;
@@ -354,9 +359,7 @@ public class WorkspaceDeltaProcessor implements IElementChangedListener, IResour
 							if (eventType == IResourceChangeEvent.PRE_CLOSE) {
 								System.out.println("processed PRE_CLOSE delta for project: [" + resource.getName() + "]"); //$NON-NLS-1$ //$NON-NLS-2$
 							} else {
-								if (ApiPlugin.DEBUG_WORKSPACE_DELTA_PROCESSOR) {
-									System.out.println("processed PRE_DELETE delta for project: [" + resource.getName() + "]"); //$NON-NLS-1$ //$NON-NLS-2$
-								}
+								System.out.println("processed PRE_DELETE delta for project: [" + resource.getName() + "]"); //$NON-NLS-1$ //$NON-NLS-2$
 							}
 						}
 						bmanager.disposeWorkspaceBaseline();
