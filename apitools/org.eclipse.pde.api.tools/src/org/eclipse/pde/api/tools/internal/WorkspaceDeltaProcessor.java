@@ -288,15 +288,21 @@ public class WorkspaceDeltaProcessor implements IElementChangedListener, IResour
 
 	@Override
 	public void resourceChanged(IResourceChangeEvent event) {
-		scheduleWork(() -> processResourceChange(event));
+		// Capture event data in the listener thread before scheduling
+		final IResource resource = event.getResource();
+		final int eventType = event.getType();
+		final int buildKind = event.getBuildKind();
+		final IResourceDelta delta = event.getDelta();
+		
+		scheduleWork(() -> processResourceChange(resource, eventType, buildKind, delta));
 	}
 
 	/**
 	 * Processes resource change events
 	 */
-	void processResourceChange(IResourceChangeEvent event) {
-		IResource resource = event.getResource();
-		switch (event.getType()) {
+	void processResourceChange(IResource initialResource, int eventType, int buildKind, IResourceDelta delta) {
+		IResource resource = initialResource;
+		switch (eventType) {
 			case IResourceChangeEvent.PRE_BUILD: {
 				if (ApiPlugin.DEBUG_WORKSPACE_DELTA_PROCESSOR) {
 					if (resource == null) {
@@ -306,12 +312,11 @@ public class WorkspaceDeltaProcessor implements IElementChangedListener, IResour
 					}
 				}
 
-				if (event.getBuildKind() == IncrementalProjectBuilder.AUTO_BUILD
+				if (buildKind == IncrementalProjectBuilder.AUTO_BUILD
 						&& !ResourcesPlugin.getWorkspace().isAutoBuilding()) {
 					return;
 				}
 
-				IResourceDelta delta = event.getDelta();
 				if (delta != null) {
 					IResourceDelta[] children = delta.getAffectedChildren(IResourceDelta.CHANGED);
 					for (IResourceDelta element : children) {
@@ -342,11 +347,11 @@ public class WorkspaceDeltaProcessor implements IElementChangedListener, IResour
 			}
 			case IResourceChangeEvent.PRE_CLOSE:
 			case IResourceChangeEvent.PRE_DELETE: {
-				if (resource.getType() == IResource.PROJECT) {
+				if (resource != null && resource.getType() == IResource.PROJECT) {
 					IProject project = (IProject) resource;
 					if (Util.isApiProject(project) || PluginProject.isJavaProject(project)) {
 						if (ApiPlugin.DEBUG_WORKSPACE_DELTA_PROCESSOR) {
-							if (event.getType() == IResourceChangeEvent.PRE_CLOSE) {
+							if (eventType == IResourceChangeEvent.PRE_CLOSE) {
 								System.out.println("processed PRE_CLOSE delta for project: [" + resource.getName() + "]"); //$NON-NLS-1$ //$NON-NLS-2$
 							} else {
 								if (ApiPlugin.DEBUG_WORKSPACE_DELTA_PROCESSOR) {
