@@ -1977,16 +1977,26 @@ public class BaseApiAnalyzer implements IApiAnalyzer {
 					}
 				}
 			}
+			
+			// When no Java project is available but source provider is set,
+			// we can still report the problem with basic information
 			String path = null;
 			if (resource != null) {
 				path = resource.getProjectRelativePath().toPortableString();
+			} else if (fJavaProject == null && fSourceProvider != null) {
+				// Use empty path when using source provider
+				path = ""; //$NON-NLS-1$
 			}
-			IApiProblem apiProblem = ApiProblemFactory.newApiProblem(path, delta.getTypeName(), delta.getArguments(), new String[] {
-					IApiMarkerConstants.MARKER_ATTR_HANDLE_ID,
-					IApiMarkerConstants.API_MARKER_ATTR_ID }, new Object[] {
-					member == null ? null : member.getHandleIdentifier(),
-					Integer.valueOf(IApiMarkerConstants.COMPATIBILITY_MARKER_ID), }, lineNumber, charStart, charEnd, IApiProblem.CATEGORY_COMPATIBILITY, delta.getElementType(), delta.getKind(), delta.getFlags());
-			return apiProblem;
+			
+			// Create the problem even without precise location info when using source provider
+			if (path != null || fSourceProvider != null) {
+				IApiProblem apiProblem = ApiProblemFactory.newApiProblem(path, delta.getTypeName(), delta.getArguments(), new String[] {
+						IApiMarkerConstants.MARKER_ATTR_HANDLE_ID,
+						IApiMarkerConstants.API_MARKER_ATTR_ID }, new Object[] {
+						member == null ? null : member.getHandleIdentifier(),
+						Integer.valueOf(IApiMarkerConstants.COMPATIBILITY_MARKER_ID), }, lineNumber, charStart, charEnd, IApiProblem.CATEGORY_COMPATIBILITY, delta.getElementType(), delta.getKind(), delta.getFlags());
+				return apiProblem;
+			}
 
 		} catch (CoreException e) {
 			ApiPlugin.log(e);
