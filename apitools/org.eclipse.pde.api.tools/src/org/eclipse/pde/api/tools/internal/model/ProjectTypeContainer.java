@@ -25,6 +25,9 @@ import org.eclipse.core.resources.IFolder;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
+import org.eclipse.jdt.core.IJavaElement;
+import org.eclipse.jdt.core.IPackageFragment;
+import org.eclipse.jdt.core.IPackageFragmentRoot;
 import org.eclipse.pde.api.tools.internal.provisional.model.ApiTypeContainerVisitor;
 import org.eclipse.pde.api.tools.internal.provisional.model.IApiElement;
 import org.eclipse.pde.api.tools.internal.provisional.model.IApiTypeContainer;
@@ -44,6 +47,11 @@ public class ProjectTypeContainer extends ApiElement implements IApiTypeContaine
 	 */
 	private final IContainer fRoot;
 	private String[] fPackageNames = null;
+	
+	/**
+	 * Optional package fragment root for JDT-based package discovery
+	 */
+	private final IPackageFragmentRoot fPackageFragmentRoot;
 
 	/**
 	 * Constructs an {@link IApiTypeContainer} rooted at the location.
@@ -52,8 +60,23 @@ public class ProjectTypeContainer extends ApiElement implements IApiTypeContaine
 	 * @param container folder in the workspace
 	 */
 	public ProjectTypeContainer(IApiElement parent, IContainer container) {
+		this(parent, container, null);
+	}
+
+	/**
+	 * Constructs an {@link IApiTypeContainer} rooted at the location with an
+	 * optional package fragment root for package discovery.
+	 *
+	 * @param parent the {@link IApiElement} parent for this container
+	 * @param container folder in the workspace
+	 * @param packageFragmentRoot optional package fragment root for JDT-based
+	 *            package discovery, may be <code>null</code>
+	 * @since 1.3.300
+	 */
+	public ProjectTypeContainer(IApiElement parent, IContainer container, IPackageFragmentRoot packageFragmentRoot) {
 		super(parent, IApiElement.API_TYPE_CONTAINER, container.getName());
 		this.fRoot = container;
+		this.fPackageFragmentRoot = packageFragmentRoot;
 	}
 
 	@Override
@@ -145,10 +168,35 @@ public class ProjectTypeContainer extends ApiElement implements IApiTypeContaine
 	public String[] getPackageNames() throws CoreException {
 		if (fPackageNames == null) {
 			SortedSet<String> names = new TreeSet<>();
-			collectPackageNames(names, fRoot);
+			if (fPackageFragmentRoot != null && fPackageFragmentRoot.exists()) {
+				// Use JDT to discover packages from the package fragment root
+				collectPackageNamesFromJDT(names, fPackageFragmentRoot);
+			} else {
+				// Fall back to file system traversal
+				collectPackageNames(names, fRoot);
+			}
 			fPackageNames = names.toArray(String[]::new);
 		}
 		return fPackageNames;
+	}
+
+	/**
+	 * Collects package names using JDT's package fragment root API.
+	 *
+	 * @param collector set to collect package names
+	 * @param root package fragment root to traverse
+	 * @throws CoreException if unable to traverse the package fragment root
+	 */
+	private static void collectPackageNamesFromJDT(Set<String> collector, IPackageFragmentRoot root) throws CoreException {
+		IJavaElement[] children = root.getChildren();
+		for (IJavaElement element : children) {
+			IPackageFragment fragment = (IPackageFragment) element;
+			String name = fragment.getElementName();
+			if (name.length() == 0) {
+				name = Util.DEFAULT_PACKAGE_NAME;
+			}
+			collector.add(name);
+		}
 	}
 
 	/**
