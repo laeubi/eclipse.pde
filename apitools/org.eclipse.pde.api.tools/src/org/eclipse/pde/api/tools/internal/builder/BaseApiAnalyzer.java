@@ -134,6 +134,24 @@ public class BaseApiAnalyzer implements IApiAnalyzer {
 	 */
 	static final String[] NO_TYPES = new String[0];
 
+	/**
+	 * Functional interface for providing source content for a given type name.
+	 * This allows the analyzer to work without a Java project by providing
+	 * source content directly.
+	 * 
+	 * @since 1.2
+	 */
+	@FunctionalInterface
+	public interface ISourceProvider {
+		/**
+		 * Returns the source content for the given fully qualified type name.
+		 * 
+		 * @param typeName the fully qualified type name (e.g., "org.example.MyClass")
+		 * @return the source content as a character array, or null if source is not available
+		 */
+		char[] getSource(String typeName);
+	}
+
 	private static class ReexportedBundleVersionInfo {
 		String componentID;
 		int kind;
@@ -181,9 +199,46 @@ public class BaseApiAnalyzer implements IApiAnalyzer {
 	private boolean fContinueOnResolutionError = false;
 
 	/**
+	 * Optional source provider for resolving source code without a Java project.
+	 * When set, this will be used to obtain source content for AST parsing.
+	 * 
+	 * @since 1.2
+	 */
+	private ISourceProvider fSourceProvider = null;
+
+	/**
+	 * Compiler options to use when parsing source without a Java project.
+	 * These options are used when fSourceProvider is set and fJavaProject is null.
+	 * 
+	 * @since 1.2
+	 */
+	private Map<String, String> fCompilerOptions = null;
+
+	/**
 	 * Constructs an API analyzer
 	 */
 	public BaseApiAnalyzer() {
+	}
+
+	/**
+	 * Sets a source provider to allow the analyzer to obtain source code
+	 * without requiring a Java project. This is useful for analyzing
+	 * components where source is available separately from the compiled code.
+	 * <p>
+	 * When a source provider is set, the analyzer will use it to obtain
+	 * source content for features like since tag checking and line number
+	 * reporting in compatibility problems.
+	 * </p>
+	 * 
+	 * @param sourceProvider the source provider, or null to clear
+	 * @param compilerOptions compiler options to use when parsing source,
+	 *        or null to use default options. Common options include
+	 *        JavaCore.COMPILER_SOURCE, JavaCore.COMPILER_COMPLIANCE, etc.
+	 * @since 1.2
+	 */
+	public void setComponentSource(ISourceProvider sourceProvider, Map<String, String> compilerOptions) {
+		this.fSourceProvider = sourceProvider;
+		this.fCompilerOptions = compilerOptions;
 	}
 
 	@Override
@@ -906,6 +961,49 @@ public class BaseApiAnalyzer implements IApiAnalyzer {
 	}
 
 	/**
+	 * Creates an AST from source content for a given type name.
+	 * This method is used when source is provided via setComponentSource
+	 * instead of through a Java project.
+	 * 
+	 * @param typeName the fully qualified type name
+	 * @param offset the focal position offset
+	 * @return the compilation unit AST, or null if source is not available
+	 * @since 1.2
+	 */
+	private CompilationUnit createASTFromSource(String typeName, int offset) {
+		if (fSourceProvider == null) {
+			return null;
+		}
+		
+		char[] source = fSourceProvider.getSource(typeName);
+		if (source == null) {
+			return null;
+		}
+		
+		ASTParser parser = ASTParser.newParser(AST.getJLSLatest());
+		parser.setFocalPosition(offset);
+		parser.setResolveBindings(false);
+		parser.setSource(source);
+		
+		// Use provided compiler options or defaults
+		Map<String, String> options = fCompilerOptions;
+		if (options == null) {
+			options = new HashMap<>();
+			options.put(JavaCore.COMPILER_SOURCE, JavaCore.VERSION_17);
+			options.put(JavaCore.COMPILER_COMPLIANCE, JavaCore.VERSION_17);
+			options.put(JavaCore.COMPILER_CODEGEN_TARGET_PLATFORM, JavaCore.VERSION_17);
+		}
+		options.put(JavaCore.COMPILER_DOC_COMMENT_SUPPORT, JavaCore.ENABLED);
+		parser.setCompilerOptions(options);
+		
+		// Set the unit name to help with parsing
+		String unitName = typeName.replace('.', '/') + ".java"; //$NON-NLS-1$
+		parser.setUnitName(unitName);
+		
+		return (CompilationUnit) parser.createAST(new NullProgressMonitor());
+	}
+
+	/**
 	 * @return the build state to use.
 	 */
 	private BuildState getBuildState() {
@@ -1546,10 +1644,17 @@ public class BaseApiAnalyzer implements IApiAnalyzer {
 		if (ignoreSinceTagCheck(null)) {
 			return;
 		}
+		
+		// Try to get member from Java project first
 		IMember member = Util.getIMember(delta, fJavaProject);
 		if (member == null || member.isBinary() || member instanceof IType iType && Util.isTest(iType)) {
+			// If no Java project member available but source provider is set, try alternative approach
+			if (member == null && fJavaProject == null && fSourceProvider != null) {
+				checkSinceTagsWithSourceProvider(delta, component);
+			}
 			return;
 		}
+		
 		ICompilationUnit cunit = member.getCompilationUnit();
 		if (cunit == null) {
 			return;
@@ -1578,93 +1683,139 @@ public class BaseApiAnalyzer implements IApiAnalyzer {
 			if (comp == null) {
 				return;
 			}
-			SinceTagChecker visitor = new SinceTagChecker(offset);
-			comp.accept(visitor);
-			// we must retrieve the component version from the delta component
-			// id
-			String componentVersionId = delta.getComponentVersionId();
-			String componentVersionString = null;
-			if (componentVersionId == null) {
-				componentVersionString = component.getVersion();
-			} else {
-				componentVersionString = extractVersion(componentVersionId);
-			}
-			try {
-				if (visitor.hasNoComment() || visitor.isMissing()) {
-					if (ignoreSinceTagCheck(IApiProblemTypes.MISSING_SINCE_TAG)) {
-						if (ApiPlugin.DEBUG_API_ANALYZER) {
-							System.out.println("Ignoring missing since tag problem"); //$NON-NLS-1$
-						}
-						return;
-					}
-					StringBuilder buffer = new StringBuilder();
-					Version componentVersion = new Version(componentVersionString);
-					buffer.append(componentVersion.getMajor()).append('.').append(componentVersion.getMinor());
-					problem = createSinceTagProblem(IApiProblem.SINCE_TAG_MISSING, new String[] { Util.getDeltaArgumentString(delta) }, delta, member, String.valueOf(buffer));
-				} else if (visitor.hasJavadocComment()) {
-					// we don't want to flag block comment
-					String sinceVersion = visitor.getSinceVersion();
-					if (sinceVersion != null) {
-						SinceTagVersion tagVersion = new SinceTagVersion(sinceVersion);
-						String postfixString = tagVersion.postfixString();
-						if (tagVersion.getVersion() == null || Util.getFragmentNumber(tagVersion.getVersionString()) > 2) {
-							if (ignoreSinceTagCheck(IApiProblemTypes.MALFORMED_SINCE_TAG)) {
-								if (ApiPlugin.DEBUG_API_ANALYZER) {
-									System.out.println("Ignoring malformed since tag problem"); //$NON-NLS-1$
-								}
-								return;
-							}
-							StringBuilder buffer = new StringBuilder();
-							if (tagVersion.prefixString() != null) {
-								buffer.append(tagVersion.prefixString());
-							}
-							Version componentVersion = new Version(componentVersionString);
-							buffer.append(componentVersion.getMajor()).append('.').append(componentVersion.getMinor());
-							if (postfixString != null) {
-								buffer.append(postfixString);
-							}
-							problem = createSinceTagProblem(IApiProblem.SINCE_TAG_MALFORMED, new String[] {
-									sinceVersion,
-									Util.getDeltaArgumentString(delta) }, delta, member, String.valueOf(buffer));
-						} else {
-							if (ignoreSinceTagCheck(IApiProblemTypes.INVALID_SINCE_TAG_VERSION)) {
-								if (ApiPlugin.DEBUG_API_ANALYZER) {
-									System.out.println("Ignoring invalid tag version problem"); //$NON-NLS-1$
-								}
-								return;
-							}
-							StringBuilder accurateVersionBuffer = new StringBuilder();
-							Version componentVersion = new Version(componentVersionString);
-							accurateVersionBuffer.append(componentVersion.getMajor()).append('.').append(componentVersion.getMinor());
-							String accurateVersion = String.valueOf(accurateVersionBuffer);
-							if (Util.isDifferentVersion(sinceVersion, accurateVersion)) {
-								// report invalid version number
-								StringBuilder buffer = new StringBuilder();
-								if (tagVersion.prefixString() != null) {
-									buffer.append(tagVersion.prefixString());
-								}
-								Version version = new Version(accurateVersion);
-								buffer.append(version.getMajor()).append('.').append(version.getMinor());
-								if (postfixString != null) {
-									buffer.append(postfixString);
-								}
-								String accurateSinceTagValue = String.valueOf(buffer);
-								problem = createSinceTagProblem(IApiProblem.SINCE_TAG_INVALID, new String[] {
-										sinceVersion, accurateSinceTagValue,
-										Util.getDeltaArgumentString(delta) }, delta, member, accurateSinceTagValue);
-							}
-						}
-					}
-				}
-			} catch (IllegalArgumentException e) {
-				ApiPlugin.log(e);
-			}
+			problem = checkSinceTagInAST(comp, offset, delta, component, member);
 		} catch (RuntimeException e) {
 			ApiPlugin.log(e);
 		}
 		if (problem != null) {
 			addProblem(problem);
 		}
+	}
+
+	/**
+	 * Checks since tags using the source provider when no Java project is available.
+	 * This is a fallback mechanism for non-workspace scenarios.
+	 * 
+	 * @param delta the delta to check
+	 * @param component the component being analyzed
+	 * @since 1.2
+	 */
+	private void checkSinceTagsWithSourceProvider(final Delta delta, final IApiComponent component) {
+		String typeName = delta.getTypeName();
+		if (typeName == null) {
+			return;
+		}
+		
+		// For now, we cannot determine the exact offset without member information
+		// So we use offset 0 and scan the entire source
+		CompilationUnit comp = createASTFromSource(typeName, 0);
+		if (comp == null) {
+			return;
+		}
+		
+		// Without member information, we can still check for since tags in the AST
+		// but we may not be able to pinpoint the exact location as precisely
+		// This is acceptable as it's better than no checking at all
+		IApiProblem problem = checkSinceTagInAST(comp, 0, delta, component, null);
+		if (problem != null) {
+			addProblem(problem);
+		}
+	}
+
+	/**
+	 * Common logic for checking since tags in an AST.
+	 * 
+	 * @param comp the compilation unit AST
+	 * @param offset the focal offset
+	 * @param delta the delta
+	 * @param component the component
+	 * @param member the member (may be null when using source provider)
+	 * @return the problem or null
+	 * @since 1.2
+	 */
+	private IApiProblem checkSinceTagInAST(CompilationUnit comp, int offset, Delta delta, IApiComponent component, IMember member) {
+		SinceTagChecker visitor = new SinceTagChecker(offset);
+		comp.accept(visitor);
+		// we must retrieve the component version from the delta component
+		// id
+		String componentVersionId = delta.getComponentVersionId();
+		String componentVersionString = null;
+		if (componentVersionId == null) {
+			componentVersionString = component.getVersion();
+		} else {
+			componentVersionString = extractVersion(componentVersionId);
+		}
+		try {
+			if (visitor.hasNoComment() || visitor.isMissing()) {
+				if (ignoreSinceTagCheck(IApiProblemTypes.MISSING_SINCE_TAG)) {
+					if (ApiPlugin.DEBUG_API_ANALYZER) {
+						System.out.println("Ignoring missing since tag problem"); //$NON-NLS-1$
+					}
+					return null;
+				}
+				StringBuilder buffer = new StringBuilder();
+				Version componentVersion = new Version(componentVersionString);
+				buffer.append(componentVersion.getMajor()).append('.').append(componentVersion.getMinor());
+				return createSinceTagProblem(IApiProblem.SINCE_TAG_MISSING, new String[] { Util.getDeltaArgumentString(delta) }, delta, member, String.valueOf(buffer));
+			} else if (visitor.hasJavadocComment()) {
+				// we don't want to flag block comment
+				String sinceVersion = visitor.getSinceVersion();
+				if (sinceVersion != null) {
+					SinceTagVersion tagVersion = new SinceTagVersion(sinceVersion);
+					String postfixString = tagVersion.postfixString();
+					if (tagVersion.getVersion() == null || Util.getFragmentNumber(tagVersion.getVersionString()) > 2) {
+						if (ignoreSinceTagCheck(IApiProblemTypes.MALFORMED_SINCE_TAG)) {
+							if (ApiPlugin.DEBUG_API_ANALYZER) {
+								System.out.println("Ignoring malformed since tag problem"); //$NON-NLS-1$
+							}
+							return null;
+						}
+						StringBuilder buffer = new StringBuilder();
+						if (tagVersion.prefixString() != null) {
+							buffer.append(tagVersion.prefixString());
+						}
+						Version componentVersion = new Version(componentVersionString);
+						buffer.append(componentVersion.getMajor()).append('.').append(componentVersion.getMinor());
+						if (postfixString != null) {
+							buffer.append(postfixString);
+						}
+						return createSinceTagProblem(IApiProblem.SINCE_TAG_MALFORMED, new String[] {
+								sinceVersion,
+								Util.getDeltaArgumentString(delta) }, delta, member, String.valueOf(buffer));
+					} else {
+						if (ignoreSinceTagCheck(IApiProblemTypes.INVALID_SINCE_TAG_VERSION)) {
+							if (ApiPlugin.DEBUG_API_ANALYZER) {
+								System.out.println("Ignoring invalid tag version problem"); //$NON-NLS-1$
+							}
+							return null;
+						}
+						StringBuilder accurateVersionBuffer = new StringBuilder();
+						Version componentVersion = new Version(componentVersionString);
+						accurateVersionBuffer.append(componentVersion.getMajor()).append('.').append(componentVersion.getMinor());
+						String accurateVersion = String.valueOf(accurateVersionBuffer);
+						if (Util.isDifferentVersion(sinceVersion, accurateVersion)) {
+							// report invalid version number
+							StringBuilder buffer = new StringBuilder();
+							if (tagVersion.prefixString() != null) {
+								buffer.append(tagVersion.prefixString());
+							}
+							Version version = new Version(accurateVersion);
+							buffer.append(version.getMajor()).append('.').append(version.getMinor());
+							if (postfixString != null) {
+								buffer.append(postfixString);
+							}
+							String accurateSinceTagValue = String.valueOf(buffer);
+							return createSinceTagProblem(IApiProblem.SINCE_TAG_INVALID, new String[] {
+									sinceVersion, accurateSinceTagValue,
+									Util.getDeltaArgumentString(delta) }, delta, member, accurateSinceTagValue);
+						}
+					}
+				}
+			}
+		} catch (IllegalArgumentException e) {
+			ApiPlugin.log(e);
+		}
+		return null;
 	}
 
 	private String extractVersion(String componentVersionId) {
@@ -1682,6 +1833,20 @@ public class BaseApiAnalyzer implements IApiAnalyzer {
 	 */
 	private IApiProblem createSinceTagProblem(int kind, final String[] messageargs, final Delta info, final IMember member, final String version) {
 		try {
+			// When member is null (source provider case), create a basic problem without detailed location info
+			if (member == null) {
+				String typeName = info.getTypeName();
+				if (typeName == null) {
+					return null;
+				}
+				// Create a problem with minimal location information
+				return ApiProblemFactory.newApiSinceTagProblem("", typeName, messageargs, new String[] { //$NON-NLS-1$
+						IApiMarkerConstants.MARKER_ATTR_VERSION,
+						IApiMarkerConstants.API_MARKER_ATTR_ID }, new Object[] {
+						version,
+						Integer.valueOf(IApiMarkerConstants.SINCE_TAG_MARKER_ID) }, 1, 0, 1, info.getElementType(), kind);
+			}
+			
 			// create a marker on the member for missing @since tag
 			IType declaringType = null;
 			if (member.getElementType() == IJavaElement.TYPE) {
