@@ -696,6 +696,7 @@ public class ApiPlugin extends Plugin implements ISaveParticipant, DebugOptionsL
 			if (deltaProcessor != null) {
 				JavaCore.removeElementChangedListener(deltaProcessor);
 				ResourcesPlugin.getWorkspace().removeResourceChangeListener(deltaProcessor);
+				deltaProcessor.shutdown();
 			}
 		} finally {
 			super.stop(context);

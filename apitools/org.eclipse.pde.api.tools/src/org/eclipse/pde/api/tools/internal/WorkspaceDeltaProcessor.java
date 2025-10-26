@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2010, 2016 IBM Corporation and others.
+ * Copyright (c) 2010, 2025 IBM Corporation and others.
  *
  * This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License 2.0
@@ -13,6 +13,8 @@
  *******************************************************************************/
 package org.eclipse.pde.api.tools.internal;
 
+import java.util.concurrent.ConcurrentLinkedQueue;
+
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.IResourceChangeEvent;
@@ -22,6 +24,10 @@ import org.eclipse.core.resources.IncrementalProjectBuilder;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
+import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.core.runtime.IStatus;
+import org.eclipse.core.runtime.Status;
+import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.jdt.core.ElementChangedEvent;
 import org.eclipse.jdt.core.IElementChangedListener;
 import org.eclipse.jdt.core.IJavaElement;
@@ -30,6 +36,7 @@ import org.eclipse.jdt.core.IJavaProject;
 import org.eclipse.jdt.core.IPackageFragment;
 import org.eclipse.jdt.core.IPackageFragmentRoot;
 import org.eclipse.jdt.core.JavaCore;
+import org.eclipse.pde.api.tools.internal.builder.ApiAnalysisBuilder;
 import org.eclipse.pde.api.tools.internal.builder.BuildState;
 import org.eclipse.pde.api.tools.internal.model.ApiBaseline;
 import org.eclipse.pde.api.tools.internal.provisional.ApiPlugin;
@@ -39,6 +46,10 @@ import org.eclipse.pde.internal.core.natures.PluginProject;
 /**
  * Standard delta processor for us to track element state changes in the workspace
  * using {@link IJavaElementDelta}s and {@link IResourceDelta}s.
+ * <p>
+ * This processor uses a background job to process changes asynchronously, avoiding
+ * blocking of listener threads and allowing coordination with API builder jobs.
+ * </p>
  *
  * @since 1.1
  */
@@ -47,9 +58,69 @@ public class WorkspaceDeltaProcessor implements IElementChangedListener, IResour
 	ApiBaselineManager bmanager = ApiBaselineManager.getManager();
 	ApiDescriptionManager dmanager = ApiDescriptionManager.getManager();
 
+	/**
+	 * Queue of work items to be processed by the delta processing job
+	 */
+	private final ConcurrentLinkedQueue<Runnable> workQueue = new ConcurrentLinkedQueue<>();
+
+	/**
+	 * The background job that processes workspace changes
+	 */
+	private final DeltaProcessingJob processingJob = new DeltaProcessingJob();
+
+	/**
+	 * Job for processing workspace deltas asynchronously
+	 */
+	private class DeltaProcessingJob extends Job {
+
+		public DeltaProcessingJob() {
+			super("API Tools Workspace Delta Processor"); //$NON-NLS-1$
+			setSystem(true);
+			setPriority(Job.BUILD);
+		}
+
+		@Override
+		protected IStatus run(IProgressMonitor monitor) {
+			try {
+				// Wait for API analysis jobs to complete before processing
+				Job.getJobManager().join(ApiAnalysisBuilder.ApiAnalysisJob.class, monitor);
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+				return Status.CANCEL_STATUS;
+			}
+
+			// Process all queued work items
+			Runnable work;
+			while ((work = workQueue.poll()) != null && !monitor.isCanceled()) {
+				try {
+					work.run();
+				} catch (Exception e) {
+					ApiPlugin.log("Error processing workspace delta", e); //$NON-NLS-1$
+				}
+			}
+
+			return Status.OK_STATUS;
+		}
+
+		@Override
+		public boolean belongsTo(Object family) {
+			return super.belongsTo(family) || WorkspaceDeltaProcessor.class == family;
+		}
+	}
+
+	/**
+	 * Schedules work to be processed by the background job
+	 */
+	private void scheduleWork(Runnable work) {
+		workQueue.offer(work);
+		processingJob.cancel(); // Cancel any pending job
+		processingJob.schedule(100); // Debounce: delay to batch multiple changes
+	}
+
 	@Override
 	public void elementChanged(ElementChangedEvent event) {
-		processJavaElementDeltas(event.getDelta().getAffectedChildren(), null);
+		IJavaElementDelta[] affectedChildren = event.getDelta().getAffectedChildren();
+		scheduleWork(() -> processJavaElementDeltas(affectedChildren, null));
 	}
 
 	/**
@@ -217,6 +288,13 @@ public class WorkspaceDeltaProcessor implements IElementChangedListener, IResour
 
 	@Override
 	public void resourceChanged(IResourceChangeEvent event) {
+		scheduleWork(() -> processResourceChange(event));
+	}
+
+	/**
+	 * Processes resource change events
+	 */
+	void processResourceChange(IResourceChangeEvent event) {
 		IResource resource = event.getResource();
 		switch (event.getType()) {
 			case IResourceChangeEvent.PRE_BUILD: {
@@ -287,6 +365,20 @@ public class WorkspaceDeltaProcessor implements IElementChangedListener, IResour
 			default:
 				break;
 		}
+	}
+
+	/**
+	 * Shuts down the delta processor, canceling any pending work and waiting
+	 * for the processing job to complete.
+	 */
+	public void shutdown() {
+		processingJob.cancel();
+		try {
+			processingJob.join();
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+		}
+		workQueue.clear();
 	}
 
 	private void cleanAndDisposeWorkspaceBaseline(IResource resource) {
