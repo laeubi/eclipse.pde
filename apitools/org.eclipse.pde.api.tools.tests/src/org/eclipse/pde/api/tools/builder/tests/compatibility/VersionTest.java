@@ -359,4 +359,35 @@ public class VersionTest extends CompatibilityTest {
 		ApiProblem[] problems = getEnv().getProblemsFor(filePath, null);
 		assertProblems(problems);
 	}
+
+	/**
+	 * Tests that when a method is added to a base class, the package version
+	 * must be incremented for packages containing subclasses that inherit the
+	 * new method. See https://github.com/eclipse-pde/eclipse.pde/issues/2064
+	 */
+	private void xInheritedMethodVersionIncrement(boolean incremental) throws Exception {
+		IPath filePath = WORKSPACE_CLASSES_PACKAGE_A.append("InheritedMethodBase.java"); //$NON-NLS-1$
+		// Expected: two version problems
+		// 1. Package a.version needs minor version increment (1.0.0 -> 1.1.0)
+		// 2. Package a.version.sub needs minor version increment (1.0.0 -> 1.1.0) due to inherited method
+		int[] ids = new int[] {
+				ApiProblemFactory.createProblemId(IApiProblem.CATEGORY_VERSION, IElementDescriptor.RESOURCE,
+						IApiProblem.MINOR_VERSION_CHANGE_PACKAGE, IApiProblem.NO_FLAGS),
+				ApiProblemFactory.createProblemId(IApiProblem.CATEGORY_VERSION, IElementDescriptor.RESOURCE,
+						IApiProblem.MINOR_VERSION_CHANGE_PACKAGE, IApiProblem.NO_FLAGS) };
+		setExpectedProblemIds(ids);
+		String[][] args = new String[2][];
+		args[0] = new String[] { "a.version", "1.1.0", "1.0.0" }; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+		args[1] = new String[] { "a.version.sub", "1.1.0", "1.0.0" }; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+		setExpectedMessageArgs(args);
+		performVersionTest(filePath, incremental);
+	}
+
+	public void testInheritedMethodVersionIncrementI() throws Exception {
+		xInheritedMethodVersionIncrement(true);
+	}
+
+	public void testInheritedMethodVersionIncrementF() throws Exception {
+		xInheritedMethodVersionIncrement(false);
+	}
 }
