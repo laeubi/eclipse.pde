@@ -170,6 +170,44 @@ public class BundleErrorReporterTest {
 		assertThat(markers).isEmpty();
 	}
 
+	@Test
+	public void testWarningOnRequireBundleWithOpenEndedRange() throws Exception {
+		IProject project = ProjectUtils.createPluginProject(manifest.getProject().getName()).getProject();
+
+		IFile manifest = project.getFile("META-INF/MANIFEST.MF");
+		PDEModelUtility.modifyModel(new ModelModification(manifest) {
+			@Override
+			protected void modifyModel(IBaseModel model, IProgressMonitor monitor) throws CoreException {
+				IBundlePluginModelBase modelBase = (IBundlePluginModelBase) model;
+				IBundle bundle = modelBase.getBundleModel().getBundle();
+				// Set an open-ended range [1.0.0,)
+				bundle.setHeader(Constants.REQUIRE_BUNDLE, "org.eclipse.core.runtime;bundle-version=\"[1.0.0,)\"");
+			}
+		}, null);
+
+		List<IMarker> markers = findMarkersWithCompilerKey("compilers.p.missing-upper-version-bound-require-bundle");
+		assertThat(markers).hasSize(1);
+	}
+
+	@Test
+	public void testWarningOnImportPackageWithOpenEndedRange() throws Exception {
+		IProject project = ProjectUtils.createPluginProject(manifest.getProject().getName()).getProject();
+
+		IFile manifest = project.getFile("META-INF/MANIFEST.MF");
+		PDEModelUtility.modifyModel(new ModelModification(manifest) {
+			@Override
+			protected void modifyModel(IBaseModel model, IProgressMonitor monitor) throws CoreException {
+				IBundlePluginModelBase modelBase = (IBundlePluginModelBase) model;
+				IBundle bundle = modelBase.getBundleModel().getBundle();
+				// Set an open-ended range [1.0.0,)
+				bundle.setHeader(Constants.IMPORT_PACKAGE, "org.osgi.framework;version=\"[1.0.0,)\"");
+			}
+		}, null);
+
+		List<IMarker> markers = findMarkersWithCompilerKey("compilers.p.missing-upper-version-bound-import-package");
+		assertThat(markers).hasSize(1);
+	}
+
 	private List<IMarker> findMarkersWithCompilerKey(String compilerKey) throws CoreException {
 		manifest.getProject().build(IncrementalProjectBuilder.FULL_BUILD, null);
 		return Arrays.stream(manifest.findMarkers(PDEMarkerFactory.MARKER_ID, true, 0))

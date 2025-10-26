@@ -1919,24 +1919,37 @@ public class BundleErrorReporter extends JarManifestErrorReporter {
 	private boolean hasUpperBound(String versionRangeStr) {
 		try {
 			VersionRange range = new VersionRange(versionRangeStr);
-			// Check if the right (upper) version is the maximum possible version
-			// VersionRange.RIGHT_CLOSED is infinity when there's no upper bound
 			Version right = range.getRight();
-			// If right is Version.emptyVersion or a very large version like Integer.MAX_VALUE, it's unbounded
-			// The OSGi spec uses a special marker for unbounded ranges
-			// We check if the range string doesn't contain a comma (single version) or ends with infinity marker
+			
+			// Check if the right (upper) version is unbounded
+			// OSGi uses a special MAX_VERSION constant to represent infinity
+			// If right equals MAX_VERSION, the range is unbounded
+			if (right != null && right.equals(Version.emptyVersion)) {
+				// Empty version as upper bound means unbounded
+				return false;
+			}
+			
+			// Check for Version.MAX_VERSION which is typically Integer.MAX_VALUE.Integer.MAX_VALUE.Integer.MAX_VALUE
+			// A range like "[1.0.0,∞)" will have getRight() return a very large version
+			// The simplest check: if a version range doesn't contain a comma, it's a single version shorthand
 			if (!versionRangeStr.contains(",")) { //$NON-NLS-1$
-				// Single version constraint like "[1.0.0,1.0.0]" has upper bound
 				// Single version without brackets like "1.0.0" is interpreted as [1.0.0,∞)
+				// Only versions within brackets like "[1.0.0]" have bounds
 				return versionRangeStr.trim().startsWith("[") || versionRangeStr.trim().startsWith("("); //$NON-NLS-1$ //$NON-NLS-2$
 			}
-			// For ranges with comma, check if there's a closing bracket/parenthesis after the comma
+			
+			// For ranges with comma, check if there's a version number after the comma
+			// Ranges like "[1.0.0,)" or "[1.0.0,]" have no upper bound
 			int commaIndex = versionRangeStr.lastIndexOf(',');
 			String afterComma = versionRangeStr.substring(commaIndex + 1).trim();
-			// If there's a version number after the comma, we have an upper bound
-			return !afterComma.isEmpty() && !afterComma.equals("]") && !afterComma.equals(")"); //$NON-NLS-1$ //$NON-NLS-2$
+			// If after comma is just a closing bracket/paren, no upper bound
+			if (afterComma.equals("]") || afterComma.equals(")")) { //$NON-NLS-1$ //$NON-NLS-2$
+				return false;
+			}
+			// Otherwise, there should be a version number, which means we have an upper bound
+			return !afterComma.isEmpty();
 		} catch (IllegalArgumentException e) {
-			// If we can't parse it, assume no upper bound for safety
+			// If we can't parse it, conservatively assume no upper bound
 			return false;
 		}
 	}
