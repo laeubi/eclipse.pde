@@ -92,4 +92,88 @@ public class BundleErrorReporterTest {
 		}
 	}
 
+	@Test
+	public void testWarningOnMissingUpperBoundForRequireBundle() throws Exception {
+		IProject project = ProjectUtils.createPluginProject(manifest.getProject().getName()).getProject();
+
+		IFile manifest = project.getFile("META-INF/MANIFEST.MF");
+		PDEModelUtility.modifyModel(new ModelModification(manifest) {
+			@Override
+			protected void modifyModel(IBaseModel model, IProgressMonitor monitor) throws CoreException {
+				IBundlePluginModelBase modelBase = (IBundlePluginModelBase) model;
+				IBundle bundle = modelBase.getBundleModel().getBundle();
+				// Set a version range without upper bound
+				bundle.setHeader(Constants.REQUIRE_BUNDLE, "org.eclipse.core.runtime;bundle-version=\"3.0.0\"");
+			}
+		}, null);
+
+		List<IMarker> markers = findMarkersWithCompilerKey("compilers.p.missing-upper-version-bound-require-bundle");
+		assertThat(markers).hasSize(1);
+		assertThat(markers.get(0).getAttribute(IMarker.MESSAGE, "")).contains("missing an upper bound");
+	}
+
+	@Test
+	public void testNoWarningWhenRequireBundleHasUpperBound() throws Exception {
+		IProject project = ProjectUtils.createPluginProject(manifest.getProject().getName()).getProject();
+
+		IFile manifest = project.getFile("META-INF/MANIFEST.MF");
+		PDEModelUtility.modifyModel(new ModelModification(manifest) {
+			@Override
+			protected void modifyModel(IBaseModel model, IProgressMonitor monitor) throws CoreException {
+				IBundlePluginModelBase modelBase = (IBundlePluginModelBase) model;
+				IBundle bundle = modelBase.getBundleModel().getBundle();
+				// Set a proper version range with upper bound
+				bundle.setHeader(Constants.REQUIRE_BUNDLE, "org.eclipse.core.runtime;bundle-version=\"[3.0.0,4.0.0)\"");
+			}
+		}, null);
+
+		List<IMarker> markers = findMarkersWithCompilerKey("compilers.p.missing-upper-version-bound-require-bundle");
+		assertThat(markers).isEmpty();
+	}
+
+	@Test
+	public void testWarningOnMissingUpperBoundForImportPackage() throws Exception {
+		IProject project = ProjectUtils.createPluginProject(manifest.getProject().getName()).getProject();
+
+		IFile manifest = project.getFile("META-INF/MANIFEST.MF");
+		PDEModelUtility.modifyModel(new ModelModification(manifest) {
+			@Override
+			protected void modifyModel(IBaseModel model, IProgressMonitor monitor) throws CoreException {
+				IBundlePluginModelBase modelBase = (IBundlePluginModelBase) model;
+				IBundle bundle = modelBase.getBundleModel().getBundle();
+				// Set a version range without upper bound
+				bundle.setHeader(Constants.IMPORT_PACKAGE, "org.osgi.framework;version=\"1.0.0\"");
+			}
+		}, null);
+
+		List<IMarker> markers = findMarkersWithCompilerKey("compilers.p.missing-upper-version-bound-import-package");
+		assertThat(markers).hasSize(1);
+		assertThat(markers.get(0).getAttribute(IMarker.MESSAGE, "")).contains("missing an upper bound");
+	}
+
+	@Test
+	public void testNoWarningWhenImportPackageHasUpperBound() throws Exception {
+		IProject project = ProjectUtils.createPluginProject(manifest.getProject().getName()).getProject();
+
+		IFile manifest = project.getFile("META-INF/MANIFEST.MF");
+		PDEModelUtility.modifyModel(new ModelModification(manifest) {
+			@Override
+			protected void modifyModel(IBaseModel model, IProgressMonitor monitor) throws CoreException {
+				IBundlePluginModelBase modelBase = (IBundlePluginModelBase) model;
+				IBundle bundle = modelBase.getBundleModel().getBundle();
+				// Set a proper version range with upper bound
+				bundle.setHeader(Constants.IMPORT_PACKAGE, "org.osgi.framework;version=\"[1.0.0,2.0.0)\"");
+			}
+		}, null);
+
+		List<IMarker> markers = findMarkersWithCompilerKey("compilers.p.missing-upper-version-bound-import-package");
+		assertThat(markers).isEmpty();
+	}
+
+	private List<IMarker> findMarkersWithCompilerKey(String compilerKey) throws CoreException {
+		manifest.getProject().build(IncrementalProjectBuilder.FULL_BUILD, null);
+		return Arrays.stream(manifest.findMarkers(PDEMarkerFactory.MARKER_ID, true, 0))
+				.filter(m -> compilerKey.equals(m.getAttribute("compilerKey", null))).toList();
+	}
+
 }
