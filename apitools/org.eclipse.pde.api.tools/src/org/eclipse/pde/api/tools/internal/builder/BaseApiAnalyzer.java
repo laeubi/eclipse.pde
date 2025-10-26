@@ -110,6 +110,7 @@ import org.eclipse.pde.api.tools.internal.provisional.model.IApiComponent;
 import org.eclipse.pde.api.tools.internal.provisional.model.IApiType;
 import org.eclipse.pde.api.tools.internal.provisional.model.IApiTypeContainer;
 import org.eclipse.pde.api.tools.internal.provisional.model.IApiTypeRoot;
+import org.eclipse.pde.api.tools.internal.provisional.model.ApiTypeContainerVisitor;
 import org.eclipse.pde.api.tools.internal.provisional.problems.IApiProblem;
 import org.eclipse.pde.api.tools.internal.provisional.problems.IApiProblemFilter;
 import org.eclipse.pde.api.tools.internal.provisional.problems.IApiProblemTypes;
@@ -2312,12 +2313,12 @@ public class BaseApiAnalyzer implements IApiAnalyzer {
 		for (IDelta delta : compatibleChanges) {
 			// a compatible change must result in a minor package version increment
 			analyzePackageDelta(delta, IApiProblem.MINOR_VERSION_CHANGE_PACKAGE, referencePackages, componentPackages,
-					requiredChanges);
+					requiredChanges, componentBundle);
 		}
 		for (IDelta delta : breakingChanges) {
 			// a breaking change must result in a major package change
 			analyzePackageDelta(delta, IApiProblem.MAJOR_VERSION_CHANGE_PACKAGE, referencePackages, componentPackages,
-					requiredChanges);
+					requiredChanges, componentBundle);
 		}
 		for (String pkg : referencePackages.keySet()) {
 			if (!componentPackages.containsKey(pkg)) {
@@ -2333,13 +2334,12 @@ public class BaseApiAnalyzer implements IApiAnalyzer {
 	private void analyzePackageDelta(IDelta delta, int category,
 			Map<String, ExportPackageDescription> referencePackages,
 			Map<String, ExportPackageDescription> componentPackages,
-			Map<String, RequiredPackageVersionChange> requiredChanges) {
-		String packageName = delta.getTypeName();
-		if (packageName != null) {
-			int idx = packageName.lastIndexOf('.');
-			if (idx > 0) {
-				packageName = packageName.substring(0, idx);
-			}
+			Map<String, RequiredPackageVersionChange> requiredChanges, BundleComponent componentBundle) {
+		String typeName = delta.getTypeName();
+		if (typeName != null) {
+			int idx = typeName.lastIndexOf('.');
+			String packageName = idx > 0 ? typeName.substring(0, idx) : typeName;
+			
 			ExportPackageDescription pkgRef = referencePackages.get(packageName);
 			if (pkgRef == null) {
 				return;
@@ -2352,28 +2352,142 @@ public class BaseApiAnalyzer implements IApiAnalyzer {
 			if (baselinePackage == null) {
 				return;
 			}
-			Version suggested;
-			if (IApiProblem.MINOR_VERSION_CHANGE_PACKAGE == category) {
-				suggested = new Version(baselineVersion.getMajor(), baselineVersion.getMinor() + 1, 0);
-			} else {
-				suggested = new Version(baselineVersion.getMajor() + 1, baselineVersion.getMinor(), 0);
-			}
-			Version compVersion = baselinePackage.getVersion();
-			if (compVersion == null || compVersion.compareTo(baselineVersion) < 0) {
-				requiredChanges.put(packageName,
-						new RequiredPackageVersionChange(category, baselineVersion, compVersion, suggested));
-			}
-			if (compVersion.getMajor() > baselineVersion.getMajor()) {
-				return;
-			}
-			if (IApiProblem.MINOR_VERSION_CHANGE_PACKAGE == category) {
-				if (compVersion.getMinor() > baselineVersion.getMinor()) {
-					return;
+			
+			// Mark the package containing the changed type
+			markPackageVersionChange(packageName, category, baselineVersion, baselinePackage.getVersion(), requiredChanges);
+			
+			// Check if we need to mark packages containing subclasses
+			// This is needed when a method is added to a base class - subclasses in other packages inherit it
+			if (shouldCheckInheritance(delta)) {
+				try {
+					markSubclassPackages(typeName, packageName, category, referencePackages, componentPackages, 
+							requiredChanges, componentBundle);
+				} catch (CoreException e) {
+					// Log but continue processing
+					if (ApiPlugin.DEBUG_API_ANALYZER) {
+						System.err.println("Error checking subclasses for " + typeName + ": " + e.getMessage()); //$NON-NLS-1$ //$NON-NLS-2$
+					}
 				}
 			}
+		}
+	}
+	
+	/**
+	 * Determines if we should check for inherited members when processing this delta.
+	 * We need to check inheritance when a method or field is added to a class.
+	 */
+	private boolean shouldCheckInheritance(IDelta delta) {
+		int elementType = delta.getElementType();
+		int kind = delta.getKind();
+		int flags = delta.getFlags();
+		
+		// Check for method addition to a class
+		if (elementType == IDelta.CLASS_ELEMENT_TYPE && kind == IDelta.ADDED && flags == IDelta.METHOD) {
+			return true;
+		}
+		// Check for field addition to a class (fields are also inherited)
+		if (elementType == IDelta.CLASS_ELEMENT_TYPE && kind == IDelta.ADDED && flags == IDelta.FIELD) {
+			return true;
+		}
+		return false;
+	}
+	
+	/**
+	 * Marks packages containing subclasses of the given type as needing version increments.
+	 */
+	private void markSubclassPackages(String baseTypeName, String basePackageName, int category,
+			Map<String, ExportPackageDescription> referencePackages,
+			Map<String, ExportPackageDescription> componentPackages,
+			Map<String, RequiredPackageVersionChange> requiredChanges, 
+			BundleComponent componentBundle) throws CoreException {
+		
+		// Find all types in the component that extend the base type
+		Set<String> subclassPackages = new HashSet<>();
+		
+		componentBundle.accept(visitor -> {
+			try {
+				IApiTypeRoot typeRoot = visitor.getTypeRoot();
+				if (typeRoot != null) {
+					IApiType type = typeRoot.getStructure();
+					if (type != null && !type.getName().equals(baseTypeName)) {
+						// Check if this type extends the base type
+						if (extendsType(type, baseTypeName)) {
+							String subTypeName = type.getName();
+							int idx = subTypeName.lastIndexOf('.');
+							if (idx > 0) {
+								String subPackageName = subTypeName.substring(0, idx);
+								// Only mark if it's a different package and is exported
+								if (!subPackageName.equals(basePackageName) && componentPackages.containsKey(subPackageName)) {
+									subclassPackages.add(subPackageName);
+								}
+							}
+						}
+					}
+				}
+			} catch (CoreException e) {
+				// Continue processing other types
+			}
+			return true;
+		});
+		
+		// Mark all packages containing subclasses
+		for (String subPackageName : subclassPackages) {
+			ExportPackageDescription refPkg = referencePackages.get(subPackageName);
+			ExportPackageDescription compPkg = componentPackages.get(subPackageName);
+			if (refPkg != null && compPkg != null) {
+				Version baselineVersion = refPkg.getVersion();
+				if (baselineVersion != null && !Version.emptyVersion.equals(baselineVersion)) {
+					markPackageVersionChange(subPackageName, category, baselineVersion, compPkg.getVersion(), requiredChanges);
+				}
+			}
+		}
+	}
+	
+	/**
+	 * Checks if the given type extends (directly or indirectly) the specified base type.
+	 */
+	private boolean extendsType(IApiType type, String baseTypeName) throws CoreException {
+		IApiType current = type;
+		while (current != null) {
+			IApiType superclass = current.getSuperclass();
+			if (superclass == null) {
+				break;
+			}
+			if (superclass.getName().equals(baseTypeName)) {
+				return true;
+			}
+			current = superclass;
+		}
+		return false;
+	}
+	
+	/**
+	 * Marks a package as requiring a version change.
+	 */
+	private void markPackageVersionChange(String packageName, int category, Version baselineVersion, 
+			Version compVersion, Map<String, RequiredPackageVersionChange> requiredChanges) {
+		Version suggested;
+		if (IApiProblem.MINOR_VERSION_CHANGE_PACKAGE == category) {
+			suggested = new Version(baselineVersion.getMajor(), baselineVersion.getMinor() + 1, 0);
+		} else {
+			suggested = new Version(baselineVersion.getMajor() + 1, baselineVersion.getMinor(), 0);
+		}
+		
+		if (compVersion == null || compVersion.compareTo(baselineVersion) < 0) {
 			requiredChanges.put(packageName,
 					new RequiredPackageVersionChange(category, baselineVersion, compVersion, suggested));
+			return;
 		}
+		if (compVersion.getMajor() > baselineVersion.getMajor()) {
+			return;
+		}
+		if (IApiProblem.MINOR_VERSION_CHANGE_PACKAGE == category) {
+			if (compVersion.getMinor() > baselineVersion.getMinor()) {
+				return;
+			}
+		}
+		requiredChanges.put(packageName,
+				new RequiredPackageVersionChange(category, baselineVersion, compVersion, suggested));
 	}
 
 	private boolean reportMultipleIncreaseMinorVersion(Version compversion, Version refversion) {
