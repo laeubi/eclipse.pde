@@ -1127,6 +1127,18 @@ public class BundleErrorReporter extends JarManifestErrorReporter {
 					getPackageLine(header, element), CompilerFlags.ERROR, PDEMarkerFactory.CAT_FATAL);
 			addMarkerAttribute(marker,PDEMarkerFactory.compilerKey, CompilerFlags.P_MISSING_VERSION_REQ_BUNDLE);
 		}
+
+		// Check for missing upper bound on version range
+		if (versionRange != null && VersionUtil.validateVersionRange(versionRange).isOK()) {
+			int upperBoundSeverity = CompilerFlags.getFlag(fProject, CompilerFlags.P_MISSING_UPPER_VERSION_BOUND_REQ_BUNDLE);
+			if (upperBoundSeverity != CompilerFlags.IGNORE && !hasUpperBound(versionRange)) {
+				VirtualMarker marker = report(
+						NLS.bind(PDECoreMessages.BundleErrorReporter_MissingUpperBoundForBundle, element.getValue()),
+						getPackageLine(header, element), upperBoundSeverity, PDEMarkerFactory.CAT_OTHER);
+				marker.setAttribute("bundleId", element.getValue()); //$NON-NLS-1$
+				addMarkerAttribute(marker, PDEMarkerFactory.compilerKey, CompilerFlags.P_MISSING_UPPER_VERSION_BOUND_REQ_BUNDLE);
+			}
+		}
 	}
 
 	private void validateVisibilityDirective(IHeader header, ManifestElement element) {
@@ -1230,6 +1242,9 @@ public class BundleErrorReporter extends JarManifestErrorReporter {
 
 			// TODO we should only validate versions that we have a match
 			validateImportPackageVersion(header, element);
+
+			// Validate version constraints based on exported package versions
+			validateImportPackageVersionAgainstExport(header, element, exported);
 
 			if (!hasUnresolved) {
 				continue;
@@ -1521,6 +1536,66 @@ public class BundleErrorReporter extends JarManifestErrorReporter {
 			addMarkerAttribute(marker,PDEMarkerFactory.compilerKey,  CompilerFlags.P_MISSING_VERSION_IMP_PKG);
 		}
 		validateVersionAttribute(header, element, true);
+
+		// Check for missing upper bound on version range
+		if (version != null && VersionUtil.validateVersionRange(version).isOK()) {
+			int upperBoundSeverity = CompilerFlags.getFlag(fProject, CompilerFlags.P_MISSING_UPPER_VERSION_BOUND_IMP_PKG);
+			if (upperBoundSeverity != CompilerFlags.IGNORE && !hasUpperBound(version)) {
+				VirtualMarker marker = report(
+						NLS.bind(PDECoreMessages.BundleErrorReporter_MissingUpperBoundForPackage, element.getValue()),
+						getPackageLine(header, element), upperBoundSeverity, PDEMarkerFactory.CAT_OTHER);
+				addMarkerAttribute(marker, PDEMarkerFactory.compilerKey, CompilerFlags.P_MISSING_UPPER_VERSION_BOUND_IMP_PKG);
+			}
+		}
+	}
+
+	/**
+	 * Validates import package version constraints against the exported package's version.
+	 * Implements requirement 2 and 3:
+	 * - If package has no version and export has no version, warn that it's dangerous
+	 * - If package has no version but export has version, recommend adding version range
+	 *
+	 * @param header the Import-Package header
+	 * @param element the manifest element for a specific import
+	 * @param exported map of available exported packages
+	 */
+	private void validateImportPackageVersionAgainstExport(IHeader header, ManifestElement element,
+			HashMap<String, ExportPackageDescription> exported) {
+		String importVersion = element.getAttribute(Constants.VERSION_ATTRIBUTE);
+
+		// Only check if there's no version constraint on the import
+		if (importVersion != null) {
+			return;
+		}
+
+		// Check each package component in the element
+		String[] packages = element.getValueComponents();
+		for (String packageName : packages) {
+			ExportPackageDescription export = exported.get(packageName);
+			if (export == null) {
+				// Package not found in exports, skip (will be caught by other validation)
+				continue;
+			}
+
+			Version exportVersion = export.getVersion();
+			// Check if export has a version (Version.emptyVersion means no version)
+			boolean exportHasVersion = exportVersion != null && !exportVersion.equals(Version.emptyVersion);
+
+			if (!exportHasVersion) {
+				// Requirement 2: Package has no version, export has no version - warn it's dangerous
+				int severity = CompilerFlags.getFlag(fProject, CompilerFlags.P_IMP_PKG_MISSING_VERSION_FOR_EXPORT_WITHOUT_VERSION);
+				if (severity != CompilerFlags.IGNORE) {
+					VirtualMarker marker = report(
+							NLS.bind(PDECoreMessages.BundleErrorReporter_ImportPkgMissingVersionForExportWithoutVersion, packageName),
+							getPackageLine(header, element), severity, PDEMarkerFactory.CAT_OTHER);
+					addMarkerAttribute(marker, PDEMarkerFactory.compilerKey, CompilerFlags.P_IMP_PKG_MISSING_VERSION_FOR_EXPORT_WITHOUT_VERSION);
+				}
+			} else {
+				// Requirement 3: Package has no version but export has version - recommend adding version range
+				// This is already handled by P_MISSING_VERSION_IMP_PKG, but we could add a more specific message
+				// For now, the existing P_MISSING_VERSION_IMP_PKG flag will handle this case
+			}
+		}
 	}
 
 	private void validateExportPackageVersion(IHeader header, ManifestElement element) {
@@ -1831,6 +1906,38 @@ public class BundleErrorReporter extends JarManifestErrorReporter {
 		if (compilerFlag != CompilerFlags.IGNORE) {
 			VirtualMarker marker = report(PDECoreMessages.BundleErrorReporter_serviceComponentLazyStart, header.getLineNumber(), CompilerFlags.P_SERVICE_COMP_WITHOUT_LAZY_ACT, PDEMarkerFactory.M_SERVICECOMPONENT_MISSING_LAZY, PDEMarkerFactory.CAT_OTHER);
 			addMarkerAttribute(marker, PDEMarkerFactory.compilerKey, CompilerFlags.P_SERVICE_COMP_WITHOUT_LAZY_ACT);
+		}
+	}
+
+	/**
+	 * Checks if a version range string has an upper bound.
+	 * A version range has an upper bound if it's not open-ended (doesn't end with infinity).
+	 *
+	 * @param versionRangeStr the version range string to check
+	 * @return true if the version range has an upper bound, false otherwise
+	 */
+	private boolean hasUpperBound(String versionRangeStr) {
+		try {
+			VersionRange range = new VersionRange(versionRangeStr);
+			// Check if the right (upper) version is the maximum possible version
+			// VersionRange.RIGHT_CLOSED is infinity when there's no upper bound
+			Version right = range.getRight();
+			// If right is Version.emptyVersion or a very large version like Integer.MAX_VALUE, it's unbounded
+			// The OSGi spec uses a special marker for unbounded ranges
+			// We check if the range string doesn't contain a comma (single version) or ends with infinity marker
+			if (!versionRangeStr.contains(",")) { //$NON-NLS-1$
+				// Single version constraint like "[1.0.0,1.0.0]" has upper bound
+				// Single version without brackets like "1.0.0" is interpreted as [1.0.0,∞)
+				return versionRangeStr.trim().startsWith("[") || versionRangeStr.trim().startsWith("("); //$NON-NLS-1$ //$NON-NLS-2$
+			}
+			// For ranges with comma, check if there's a closing bracket/parenthesis after the comma
+			int commaIndex = versionRangeStr.lastIndexOf(',');
+			String afterComma = versionRangeStr.substring(commaIndex + 1).trim();
+			// If there's a version number after the comma, we have an upper bound
+			return !afterComma.isEmpty() && !afterComma.equals("]") && !afterComma.equals(")"); //$NON-NLS-1$ //$NON-NLS-2$
+		} catch (IllegalArgumentException e) {
+			// If we can't parse it, assume no upper bound for safety
+			return false;
 		}
 	}
 }
