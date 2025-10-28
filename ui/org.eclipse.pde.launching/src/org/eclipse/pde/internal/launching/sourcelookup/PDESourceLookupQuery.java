@@ -311,6 +311,12 @@ public class PDESourceLookupQuery implements ISafeRunnable {
 					}
 				}
 			}
+			
+			// As a last resort, search in repositories for source bundles
+			result = fDirector.findSourceInRepositories(id, typeName);
+			if (result != null) {
+				return result;
+			}
 		}
 		return null;
 	}

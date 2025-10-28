@@ -40,6 +40,11 @@ public interface ILaunchingPreferenceConstants {
 	 * arguments when creating a new launch configuration
 	 */
 	public static final String ADD_SWT_NON_DISPOSAL_REPORTING = "Preferences.Launching.addSwtNonDisposalReporting";//$NON-NLS-1$
+	
+	/**
+	 * Boolean preference whether to search in enabled repositories for source bundles
+	 */
+	public static final String PROP_SEARCH_REPOSITORIES_FOR_SOURCE = "Preferences.Launching.searchRepositoriesForSource";//$NON-NLS-1$
 
 	// OSGi Frameworks
 	public static final String DEFAULT_OSGI_FRAMEOWRK = "Preference.default.osgi.framework"; //$NON-NLS-1$
