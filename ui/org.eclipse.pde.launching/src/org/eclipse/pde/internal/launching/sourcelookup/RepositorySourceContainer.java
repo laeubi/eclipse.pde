@@ -30,6 +30,7 @@ import org.eclipse.equinox.p2.query.IQueryResult;
 import org.eclipse.equinox.p2.query.QueryUtil;
 import org.eclipse.equinox.p2.repository.artifact.IArtifactRepository;
 import org.eclipse.equinox.p2.repository.artifact.IArtifactRepositoryManager;
+import org.eclipse.equinox.p2.repository.artifact.IFileArtifactRepository;
 import org.eclipse.equinox.p2.repository.metadata.IMetadataRepository;
 import org.eclipse.equinox.p2.repository.metadata.IMetadataRepositoryManager;
 import org.eclipse.osgi.util.NLS;
@@ -181,9 +182,11 @@ public class RepositorySourceContainer extends AbstractSourceContainer {
 	private File getArtifactFile(IArtifactRepositoryManager manager, IArtifactKey key, URI repoUri) {
 		try {
 			IArtifactRepository artifactRepo = manager.loadRepository(repoUri, null);
-			File location = artifactRepo.getArtifact(key);
-			if (location != null && location.exists()) {
-				return location;
+			if (artifactRepo instanceof IFileArtifactRepository fileRepo) {
+				File location = fileRepo.getArtifactFile(key);
+				if (location != null && location.exists()) {
+					return location;
+				}
 			}
 		} catch (Exception e) {
 			// Ignore and return null
