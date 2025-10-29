@@ -14,22 +14,40 @@
 package org.eclipse.pde.internal.core;
 
 import java.io.File;
+import java.net.URI;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 
+import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
+import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.core.runtime.IStatus;
+import org.eclipse.core.runtime.NullProgressMonitor;
+import org.eclipse.core.runtime.Path;
 import org.eclipse.core.runtime.Platform;
+import org.eclipse.equinox.p2.metadata.IArtifactKey;
+import org.eclipse.equinox.p2.metadata.IInstallableUnit;
+import org.eclipse.equinox.p2.metadata.MetadataFactory;
+import org.eclipse.equinox.p2.metadata.MetadataFactory.InstallableUnitDescription;
 import org.eclipse.equinox.p2.metadata.Version;
+import org.eclipse.equinox.p2.query.IQueryResult;
+import org.eclipse.equinox.p2.query.QueryUtil;
+import org.eclipse.equinox.p2.repository.IRepository;
+import org.eclipse.equinox.p2.repository.artifact.IArtifactRepository;
+import org.eclipse.equinox.p2.repository.artifact.IArtifactRepositoryManager;
+import org.eclipse.equinox.p2.repository.artifact.IArtifactRequest;
+import org.eclipse.equinox.p2.repository.metadata.IMetadataRepository;
+import org.eclipse.equinox.p2.repository.metadata.IMetadataRepositoryManager;
 import org.eclipse.equinox.spi.p2.publisher.PublisherHelper;
 import org.eclipse.jface.preference.IPreferenceStore;
 import org.eclipse.pde.core.IPluginSourcePathLocator;
 import org.eclipse.pde.core.plugin.IPluginBase;
 import org.eclipse.pde.internal.core.copyfrom.oomph.P2Index;
 import org.eclipse.pde.internal.core.copyfrom.oomph.P2Index.Repository;
-import org.eclipse.pde.internal.core.copyfrom.oomph.P2IndexImpl;
+import org.eclipse.pde.internal.core.target.P2TargetUtils;
 import org.eclipse.pde.internal.ui.IPreferenceConstants;
 import org.eclipse.pde.internal.ui.PDEPlugin;
 
@@ -147,7 +165,7 @@ public class ExternalPluginSourcePathLocator implements IPluginSourcePathLocator
 			if (p2Index == null) {
 				File indexCacheDir = new File(Platform.getStateLocation(PDECore.getDefault().getBundle()).toFile(),
 						"index"); //$NON-NLS-1$
-				p2Index = new P2IndexImpl(indexCacheDir);
+				p2Index = new P2Index(indexCacheDir);
 			}
 
 			String pluginId = plugin.getId();
@@ -164,19 +182,90 @@ public class ExternalPluginSourcePathLocator implements IPluginSourcePathLocator
 					for (Version version : entry.getValue()) {
 						if (version.toString().equals(pluginVersion)) {
 							// Found matching source bundle in the index
-							// The repository location is available but actual download/resolution
-							// would require P2 repository manager which is not available in this context
-							// For now, log the finding and return null (to be implemented with P2 integration)
-							PDECore.log("Found source bundle " + sourcePluginId + " version " + version //$NON-NLS-1$ //$NON-NLS-2$
-									+ " in repository " + entry.getKey().getLocation()); //$NON-NLS-1$
-							// TODO: Implement actual artifact resolution and download from the repository
-							return null;
+							URI repositoryURI = URI.create(entry.getKey().getLocation().toString());
+							return downloadArtifact(repositoryURI, sourcePluginId, pluginVersion);
 						}
 					}
 				}
 			}
 		} catch (Exception e) {
 			// Log but don't fail - this is just one lookup strategy
+			PDECore.log(e);
+		}
+		return null;
+	}
+
+	/**
+	 * Downloads an artifact from a P2 repository to the bundle pool.
+	 * 
+	 * @param repositoryURL the repository URL
+	 * @param artifactId    the artifact ID (bundle symbolic name)
+	 * @param version       the artifact version
+	 * @return the file location where it was downloaded or null if download failed
+	 */
+	private IPath downloadArtifact(URI repositoryURL, String artifactId, String version) {
+		try {
+			IProgressMonitor monitor = new NullProgressMonitor();
+
+			// Get P2 managers
+			IMetadataRepositoryManager metadataManager = P2TargetUtils.getMetadataRepositoryManager();
+			IArtifactRepositoryManager artifactManager = P2TargetUtils.getArtifactRepositoryManager();
+
+			// Load the repository
+			IMetadataRepository metadataRepo = metadataManager.loadRepository(repositoryURL,
+					IRepository.REPOSITORY_HINT_MODIFIABLE, monitor);
+
+			// Find the installable unit for the source bundle
+			IQueryResult<IInstallableUnit> queryResult = metadataRepo.query(
+					QueryUtil.createIUQuery(artifactId, Version.create(version)), monitor);
+
+			if (queryResult.isEmpty()) {
+				PDECore.log("Source bundle " + artifactId + " version " + version + " not found in repository " //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+						+ repositoryURL);
+				return null;
+			}
+
+			IInstallableUnit iu = queryResult.iterator().next();
+
+			// Get the artifact key
+			IArtifactKey artifactKey = iu.getArtifacts().iterator().next();
+
+			// Get the bundle pool (destination)
+			IArtifactRepository bundlePool = P2TargetUtils.getBundlePool();
+
+			// Check if already in bundle pool
+			if (bundlePool.contains(artifactKey)) {
+				// Already downloaded, find the file
+				File bundlePoolLocation = bundlePool.getLocation();
+				File artifactFile = new File(bundlePoolLocation,
+						"plugins/" + artifactId + "_" + version + ".jar"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+				if (artifactFile.exists()) {
+					return new Path(artifactFile.getAbsolutePath());
+				}
+			}
+
+			// Download the artifact to the bundle pool
+			IArtifactRepository sourceRepo = artifactManager.loadRepository(repositoryURL,
+					IRepository.REPOSITORY_HINT_MODIFIABLE, monitor);
+
+			IArtifactRequest request = artifactManager.createMirrorRequest(artifactKey, bundlePool, null, null);
+			IStatus status = artifactManager.perform(new IArtifactRequest[] { request }, monitor);
+
+			if (status.isOK()) {
+				// Find the downloaded file in the bundle pool
+				File bundlePoolLocation = bundlePool.getLocation();
+				File artifactFile = new File(bundlePoolLocation,
+						"plugins/" + artifactId + "_" + version + ".jar"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+				if (artifactFile.exists()) {
+					PDECore.log("Downloaded source bundle " + artifactId + " version " + version + " from " //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+							+ repositoryURL);
+					return new Path(artifactFile.getAbsolutePath());
+				}
+			} else {
+				PDECore.log(status);
+			}
+
+		} catch (Exception e) {
 			PDECore.log(e);
 		}
 		return null;
