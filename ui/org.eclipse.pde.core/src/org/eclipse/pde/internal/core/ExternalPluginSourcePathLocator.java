@@ -45,9 +45,15 @@ import org.eclipse.equinox.spi.p2.publisher.PublisherHelper;
 import org.eclipse.jface.preference.IPreferenceStore;
 import org.eclipse.pde.core.IPluginSourcePathLocator;
 import org.eclipse.pde.core.plugin.IPluginBase;
+import org.eclipse.pde.core.target.ITargetDefinition;
+import org.eclipse.pde.core.target.ITargetHandle;
+import org.eclipse.pde.core.target.ITargetLocation;
+import org.eclipse.pde.core.target.ITargetPlatformService;
 import org.eclipse.pde.internal.core.copyfrom.oomph.P2Index;
 import org.eclipse.pde.internal.core.copyfrom.oomph.P2Index.Repository;
+import org.eclipse.pde.internal.core.target.IUBundleContainer;
 import org.eclipse.pde.internal.core.target.P2TargetUtils;
+import org.eclipse.pde.internal.core.target.TargetPlatformService;
 import org.eclipse.pde.internal.ui.IPreferenceConstants;
 import org.eclipse.pde.internal.ui.PDEPlugin;
 
@@ -170,8 +176,77 @@ public class ExternalPluginSourcePathLocator implements IPluginSourcePathLocator
 	 * @return the path to the source bundle or null if not found
 	 */
 	private IPath searchInTargets(IPluginBase plugin, List<String> selectedTargets) {
-		// TODO: Implement searching in selected target platforms
-		// This will be implemented in a future step
+		if (selectedTargets == null || selectedTargets.isEmpty()) {
+			return null;
+		}
+
+		String pluginId = plugin.getId();
+		String sourcePluginId = pluginId + ".source"; //$NON-NLS-1$
+		String pluginVersion = plugin.getVersion();
+
+		try {
+			// Get the target platform service
+			ITargetPlatformService service = TargetPlatformService.getDefault();
+			if (service == null) {
+				return null;
+			}
+
+			// Get all available target definitions
+			ITargetHandle[] targetHandles = service.getTargets(null);
+			if (targetHandles == null) {
+				return null;
+			}
+
+			// Loop through all target handles
+			for (ITargetHandle targetHandle : targetHandles) {
+				try {
+					ITargetDefinition targetDef = targetHandle.getTargetDefinition();
+					if (targetDef == null || targetDef.getName() == null) {
+						continue;
+					}
+
+					// Check if this target is in the selected list
+					if (!selectedTargets.contains(targetDef.getName())) {
+						continue;
+					}
+
+					// Get all target locations from this target
+					ITargetLocation[] locations = targetDef.getTargetLocations();
+					if (locations == null) {
+						continue;
+					}
+
+					// Loop through locations and look for IUBundleContainer (IU locations)
+					for (ITargetLocation location : locations) {
+						if (location instanceof IUBundleContainer) {
+							IUBundleContainer iuLocation = (IUBundleContainer) location;
+
+							// Get the repository URIs from this IU location
+							List<URI> repositories = iuLocation.getRepositories();
+							if (repositories == null || repositories.isEmpty()) {
+								continue;
+							}
+
+							// Search each repository for the source bundle
+							for (URI repoURI : repositories) {
+								IPath result = downloadArtifact(repoURI, sourcePluginId, pluginVersion);
+								if (result != null) {
+									// Found and downloaded successfully
+									return result;
+								}
+							}
+						}
+					}
+				} catch (CoreException e) {
+					// Log and continue to next target
+					PDECore.log("Failed to process target definition: " + e.getMessage()); //$NON-NLS-1$
+				}
+			}
+		} catch (Exception e) {
+			// Log but don't fail - this is just one lookup strategy
+			PDECore.log(e);
+		}
+
 		return null;
 	}
 
