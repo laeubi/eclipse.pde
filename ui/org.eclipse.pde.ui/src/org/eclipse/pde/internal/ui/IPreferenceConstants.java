@@ -72,13 +72,10 @@ public interface IPreferenceConstants extends ILaunchingPreferenceConstants {
 	 */
 	public static final String SOURCE_LOOKUP_ENABLED = "Preferences.SourceLookup.enabled"; //$NON-NLS-1$
 	/**
-	 * Boolean preference whether to query known repositories for sources
+	 * String preference storing comma-separated ordered list of source lookup strategies
+	 * Possible values: REPOSITORIES, TARGETS, INDEX, SITES
 	 */
-	public static final String SOURCE_LOOKUP_QUERY_REPOSITORIES = "Preferences.SourceLookup.queryRepositories"; //$NON-NLS-1$
-	/**
-	 * Boolean preference whether to query the Eclipse index for sources
-	 */
-	public static final String SOURCE_LOOKUP_QUERY_INDEX = "Preferences.SourceLookup.queryIndex"; //$NON-NLS-1$
+	public static final String SOURCE_LOOKUP_ORDER = "Preferences.SourceLookup.order"; //$NON-NLS-1$
 	/**
 	 * String preference storing comma-separated list of selected target platform names for source lookup
 	 */

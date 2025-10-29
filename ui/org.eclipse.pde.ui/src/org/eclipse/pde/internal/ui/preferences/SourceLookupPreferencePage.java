@@ -28,6 +28,7 @@ import org.eclipse.jface.viewers.ArrayContentProvider;
 import org.eclipse.jface.viewers.CheckboxTableViewer;
 import org.eclipse.jface.viewers.IStructuredSelection;
 import org.eclipse.jface.viewers.LabelProvider;
+import org.eclipse.jface.viewers.TableViewer;
 import org.eclipse.jface.window.Window;
 import org.eclipse.pde.core.target.ITargetDefinition;
 import org.eclipse.pde.core.target.ITargetHandle;
@@ -45,6 +46,7 @@ import org.eclipse.swt.widgets.Button;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Group;
+import org.eclipse.swt.widgets.Label;
 import org.eclipse.ui.IWorkbench;
 import org.eclipse.ui.IWorkbenchPreferencePage;
 import org.eclipse.ui.PlatformUI;
@@ -56,14 +58,22 @@ public class SourceLookupPreferencePage extends PreferencePage implements IWorkb
 
 	public static final String ID = "org.eclipse.pde.ui.SourceLookupPreferencePage"; //$NON-NLS-1$
 
+	// Source lookup strategy identifiers
+	private static final String STRATEGY_REPOSITORIES = "REPOSITORIES"; //$NON-NLS-1$
+	private static final String STRATEGY_TARGETS = "TARGETS"; //$NON-NLS-1$
+	private static final String STRATEGY_INDEX = "INDEX"; //$NON-NLS-1$
+	private static final String STRATEGY_SITES = "SITES"; //$NON-NLS-1$
+
 	private Button fEnableSourceLookup;
-	private Button fQueryRepositories;
-	private Button fQueryIndex;
+	private TableViewer fOrderTableViewer;
+	private Button fUpButton;
+	private Button fDownButton;
 	private CheckboxTableViewer fTargetsTableViewer;
 	private CheckboxTableViewer fRepositoriesTableViewer;
 	private Button fAddRepositoryButton;
 	private Button fRemoveRepositoryButton;
 
+	private List<String> fLookupOrder = new ArrayList<>();
 	private List<ITargetDefinition> fTargets = new ArrayList<>();
 	private List<String> fRepositories = new ArrayList<>();
 
@@ -84,24 +94,48 @@ public class SourceLookupPreferencePage extends PreferencePage implements IWorkb
 		fEnableSourceLookup.setSelection(getPreferenceStore().getBoolean(IPreferenceConstants.SOURCE_LOOKUP_ENABLED));
 		fEnableSourceLookup.addSelectionListener(widgetSelectedAdapter(e -> updateEnablement()));
 
-		// Options group
-		Group optionsGroup = SWTFactory.createGroup(composite, PDEUIMessages.SourceLookupPreferencePage_optionsGroup, 1, 1, GridData.FILL_HORIZONTAL);
+		// Lookup order group
+		Group orderGroup = SWTFactory.createGroup(composite, PDEUIMessages.SourceLookupPreferencePage_orderGroup, 2, 1, GridData.FILL_HORIZONTAL);
 
-		fQueryRepositories = new Button(optionsGroup, SWT.CHECK);
-		fQueryRepositories.setText(PDEUIMessages.SourceLookupPreferencePage_queryRepositories);
-		fQueryRepositories.setSelection(getPreferenceStore().getBoolean(IPreferenceConstants.SOURCE_LOOKUP_QUERY_REPOSITORIES));
+		Label orderDescription = new Label(orderGroup, SWT.WRAP);
+		orderDescription.setText(PDEUIMessages.SourceLookupPreferencePage_orderDescription);
+		GridData gd = new GridData(GridData.FILL_HORIZONTAL);
+		gd.horizontalSpan = 2;
+		gd.widthHint = 400;
+		orderDescription.setLayoutData(gd);
 
-		fQueryIndex = new Button(optionsGroup, SWT.CHECK);
-		fQueryIndex.setText(PDEUIMessages.SourceLookupPreferencePage_queryIndex);
-		fQueryIndex.setSelection(getPreferenceStore().getBoolean(IPreferenceConstants.SOURCE_LOOKUP_QUERY_INDEX));
+		fOrderTableViewer = new TableViewer(orderGroup, SWT.BORDER | SWT.V_SCROLL);
+		gd = new GridData(GridData.FILL_BOTH);
+		gd.heightHint = 100;
+		fOrderTableViewer.getControl().setLayoutData(gd);
+		fOrderTableViewer.setLabelProvider(new LabelProvider() {
+			@Override
+			public String getText(Object element) {
+				return getStrategyLabel((String) element);
+			}
+		});
+		fOrderTableViewer.setContentProvider(ArrayContentProvider.getInstance());
+		fOrderTableViewer.addSelectionChangedListener(event -> updateOrderButtons());
+
+		// Up/Down buttons
+		Composite buttonComposite = SWTFactory.createComposite(orderGroup, 1, 1, GridData.FILL_VERTICAL | GridData.VERTICAL_ALIGN_BEGINNING, 0, 0);
+
+		fUpButton = SWTFactory.createPushButton(buttonComposite, PDEUIMessages.SourceLookupPreferencePage_up, null);
+		fUpButton.addSelectionListener(widgetSelectedAdapter(e -> handleMoveUp()));
+
+		fDownButton = SWTFactory.createPushButton(buttonComposite, PDEUIMessages.SourceLookupPreferencePage_down, null);
+		fDownButton.addSelectionListener(widgetSelectedAdapter(e -> handleMoveDown()));
+
+		// Load lookup order
+		loadLookupOrder();
 
 		// Target platforms group
 		Group targetsGroup = SWTFactory.createGroup(composite, PDEUIMessages.SourceLookupPreferencePage_targetsGroup, 1, 1, GridData.FILL_BOTH);
 		targetsGroup.setLayoutData(new GridData(GridData.FILL_BOTH));
 
 		fTargetsTableViewer = CheckboxTableViewer.newCheckList(targetsGroup, SWT.BORDER | SWT.V_SCROLL);
-		GridData gd = new GridData(GridData.FILL_BOTH);
-		gd.heightHint = 150;
+		gd = new GridData(GridData.FILL_BOTH);
+		gd.heightHint = 120;
 		fTargetsTableViewer.getControl().setLayoutData(gd);
 		fTargetsTableViewer.setLabelProvider(new LabelProvider() {
 			@Override
@@ -124,7 +158,7 @@ public class SourceLookupPreferencePage extends PreferencePage implements IWorkb
 
 		fRepositoriesTableViewer = CheckboxTableViewer.newCheckList(repositoriesGroup, SWT.BORDER | SWT.V_SCROLL);
 		gd = new GridData(GridData.FILL_BOTH);
-		gd.heightHint = 150;
+		gd.heightHint = 120;
 		fRepositoriesTableViewer.getControl().setLayoutData(gd);
 		fRepositoriesTableViewer.setLabelProvider(new LabelProvider());
 		fRepositoriesTableViewer.setContentProvider(ArrayContentProvider.getInstance());
@@ -134,7 +168,7 @@ public class SourceLookupPreferencePage extends PreferencePage implements IWorkb
 		loadRepositories();
 
 		// Repository buttons
-		Composite buttonComposite = SWTFactory.createComposite(repositoriesGroup, 1, 1, GridData.FILL_VERTICAL | GridData.VERTICAL_ALIGN_BEGINNING, 0, 0);
+		buttonComposite = SWTFactory.createComposite(repositoriesGroup, 1, 1, GridData.FILL_VERTICAL | GridData.VERTICAL_ALIGN_BEGINNING, 0, 0);
 
 		fAddRepositoryButton = SWTFactory.createPushButton(buttonComposite, PDEUIMessages.SourceLookupPreferencePage_addRepository, null);
 		fAddRepositoryButton.addSelectionListener(widgetSelectedAdapter(e -> handleAddRepository()));
@@ -144,8 +178,35 @@ public class SourceLookupPreferencePage extends PreferencePage implements IWorkb
 
 		updateEnablement();
 		updateRepositoryButtons();
+		updateOrderButtons();
 
 		return composite;
+	}
+
+	private String getStrategyLabel(String strategy) {
+		switch (strategy) {
+		case STRATEGY_REPOSITORIES:
+			return PDEUIMessages.SourceLookupPreferencePage_strategy_REPOSITORIES;
+		case STRATEGY_TARGETS:
+			return PDEUIMessages.SourceLookupPreferencePage_strategy_TARGETS;
+		case STRATEGY_INDEX:
+			return PDEUIMessages.SourceLookupPreferencePage_strategy_INDEX;
+		case STRATEGY_SITES:
+			return PDEUIMessages.SourceLookupPreferencePage_strategy_SITES;
+		default:
+			return strategy;
+		}
+	}
+
+	private void loadLookupOrder() {
+		String order = getPreferenceStore().getString(IPreferenceConstants.SOURCE_LOOKUP_ORDER);
+		if (order == null || order.trim().isEmpty()) {
+			// Use default order
+			fLookupOrder = new ArrayList<>(Arrays.asList(STRATEGY_REPOSITORIES, STRATEGY_TARGETS, STRATEGY_INDEX, STRATEGY_SITES));
+		} else {
+			fLookupOrder = new ArrayList<>(Arrays.asList(order.split(","))); //$NON-NLS-1$
+		}
+		fOrderTableViewer.setInput(fLookupOrder);
 	}
 
 	private void loadTargets() {
@@ -182,6 +243,36 @@ public class SourceLookupPreferencePage extends PreferencePage implements IWorkb
 		}
 	}
 
+	private void handleMoveUp() {
+		IStructuredSelection selection = (IStructuredSelection) fOrderTableViewer.getSelection();
+		if (!selection.isEmpty()) {
+			String strategy = (String) selection.getFirstElement();
+			int index = fLookupOrder.indexOf(strategy);
+			if (index > 0) {
+				fLookupOrder.remove(index);
+				fLookupOrder.add(index - 1, strategy);
+				fOrderTableViewer.refresh();
+				fOrderTableViewer.setSelection(selection);
+				updateOrderButtons();
+			}
+		}
+	}
+
+	private void handleMoveDown() {
+		IStructuredSelection selection = (IStructuredSelection) fOrderTableViewer.getSelection();
+		if (!selection.isEmpty()) {
+			String strategy = (String) selection.getFirstElement();
+			int index = fLookupOrder.indexOf(strategy);
+			if (index < fLookupOrder.size() - 1) {
+				fLookupOrder.remove(index);
+				fLookupOrder.add(index + 1, strategy);
+				fOrderTableViewer.refresh();
+				fOrderTableViewer.setSelection(selection);
+				updateOrderButtons();
+			}
+		}
+	}
+
 	private void handleAddRepository() {
 		InputDialog dialog = new InputDialog(getShell(), 
 				PDEUIMessages.SourceLookupPreferencePage_addRepositoryTitle,
@@ -211,12 +302,33 @@ public class SourceLookupPreferencePage extends PreferencePage implements IWorkb
 
 	private void updateEnablement() {
 		boolean enabled = fEnableSourceLookup.getSelection();
-		fQueryRepositories.setEnabled(enabled);
-		fQueryIndex.setEnabled(enabled);
+		fOrderTableViewer.getControl().setEnabled(enabled);
+		fUpButton.setEnabled(enabled);
+		fDownButton.setEnabled(enabled);
 		fTargetsTableViewer.getControl().setEnabled(enabled);
 		fRepositoriesTableViewer.getControl().setEnabled(enabled);
 		fAddRepositoryButton.setEnabled(enabled);
 		fRemoveRepositoryButton.setEnabled(enabled && !fRepositoriesTableViewer.getSelection().isEmpty());
+		updateOrderButtons();
+	}
+
+	private void updateOrderButtons() {
+		if (!fEnableSourceLookup.getSelection()) {
+			fUpButton.setEnabled(false);
+			fDownButton.setEnabled(false);
+			return;
+		}
+
+		IStructuredSelection selection = (IStructuredSelection) fOrderTableViewer.getSelection();
+		if (selection.isEmpty()) {
+			fUpButton.setEnabled(false);
+			fDownButton.setEnabled(false);
+		} else {
+			String strategy = (String) selection.getFirstElement();
+			int index = fLookupOrder.indexOf(strategy);
+			fUpButton.setEnabled(index > 0);
+			fDownButton.setEnabled(index < fLookupOrder.size() - 1);
+		}
 	}
 
 	private void updateRepositoryButtons() {
@@ -233,8 +345,10 @@ public class SourceLookupPreferencePage extends PreferencePage implements IWorkb
 	@Override
 	public boolean performOk() {
 		getPreferenceStore().setValue(IPreferenceConstants.SOURCE_LOOKUP_ENABLED, fEnableSourceLookup.getSelection());
-		getPreferenceStore().setValue(IPreferenceConstants.SOURCE_LOOKUP_QUERY_REPOSITORIES, fQueryRepositories.getSelection());
-		getPreferenceStore().setValue(IPreferenceConstants.SOURCE_LOOKUP_QUERY_INDEX, fQueryIndex.getSelection());
+
+		// Save lookup order
+		String order = String.join(",", fLookupOrder); //$NON-NLS-1$
+		getPreferenceStore().setValue(IPreferenceConstants.SOURCE_LOOKUP_ORDER, order);
 
 		// Save selected targets
 		Object[] checkedTargets = fTargetsTableViewer.getCheckedElements();
@@ -255,13 +369,18 @@ public class SourceLookupPreferencePage extends PreferencePage implements IWorkb
 	@Override
 	protected void performDefaults() {
 		fEnableSourceLookup.setSelection(getPreferenceStore().getDefaultBoolean(IPreferenceConstants.SOURCE_LOOKUP_ENABLED));
-		fQueryRepositories.setSelection(getPreferenceStore().getDefaultBoolean(IPreferenceConstants.SOURCE_LOOKUP_QUERY_REPOSITORIES));
-		fQueryIndex.setSelection(getPreferenceStore().getDefaultBoolean(IPreferenceConstants.SOURCE_LOOKUP_QUERY_INDEX));
+		
+		// Reset to default order
+		fLookupOrder = new ArrayList<>(Arrays.asList(STRATEGY_REPOSITORIES, STRATEGY_TARGETS, STRATEGY_INDEX, STRATEGY_SITES));
+		fOrderTableViewer.setInput(fLookupOrder);
+		fOrderTableViewer.refresh();
+		
 		fTargetsTableViewer.setCheckedElements(new Object[0]);
 		fRepositories.clear();
 		fRepositoriesTableViewer.setInput(fRepositories);
 		updateEnablement();
 		updateRepositoryButtons();
+		updateOrderButtons();
 		super.performDefaults();
 	}
 

@@ -35,8 +35,8 @@ public class PreferenceInitializer extends AbstractPreferenceInitializer {
 		
 		// Source Lookup defaults
 		store.setDefault(IPreferenceConstants.SOURCE_LOOKUP_ENABLED, false);
-		store.setDefault(IPreferenceConstants.SOURCE_LOOKUP_QUERY_REPOSITORIES, false);
-		store.setDefault(IPreferenceConstants.SOURCE_LOOKUP_QUERY_INDEX, false);
+		// Default order: configured repositories, selected target, eclipse index, available software sites
+		store.setDefault(IPreferenceConstants.SOURCE_LOOKUP_ORDER, "REPOSITORIES,TARGETS,INDEX,SITES"); //$NON-NLS-1$
 		store.setDefault(IPreferenceConstants.SOURCE_LOOKUP_SELECTED_TARGETS, ""); //$NON-NLS-1$
 		store.setDefault(IPreferenceConstants.SOURCE_LOOKUP_REPOSITORIES, ""); //$NON-NLS-1$
 	}

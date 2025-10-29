@@ -28,12 +28,18 @@ import org.eclipse.pde.internal.ui.PDEPlugin;
  * Eclipse index for source bundles based on the configured preferences.
  * <p>
  * This locator checks the Source Lookups preference page settings and performs
- * lookups according to the enabled options.
+ * lookups according to the configured order.
  * </p>
  * 
  * @since 3.17
  */
 public class ExternalPluginSourcePathLocator implements IPluginSourcePathLocator {
+
+	// Source lookup strategy identifiers
+	private static final String STRATEGY_REPOSITORIES = "REPOSITORIES"; //$NON-NLS-1$
+	private static final String STRATEGY_TARGETS = "TARGETS"; //$NON-NLS-1$
+	private static final String STRATEGY_INDEX = "INDEX"; //$NON-NLS-1$
+	private static final String STRATEGY_SITES = "SITES"; //$NON-NLS-1$
 
 	@Override
 	public IPath locateSource(IPluginBase plugin) {
@@ -44,35 +50,30 @@ public class ExternalPluginSourcePathLocator implements IPluginSourcePathLocator
 			return null;
 		}
 
-		// Query known repositories if enabled
-		if (store.getBoolean(IPreferenceConstants.SOURCE_LOOKUP_QUERY_REPOSITORIES)) {
-			IPath result = queryKnownRepositories(plugin);
-			if (result != null) {
-				return result;
-			}
-		}
+		// Get the lookup order
+		List<String> lookupOrder = getLookupOrder(store);
 
-		// Query Eclipse index if enabled
-		if (store.getBoolean(IPreferenceConstants.SOURCE_LOOKUP_QUERY_INDEX)) {
-			IPath result = queryEclipseIndex(plugin);
-			if (result != null) {
-				return result;
+		// Execute lookups in the configured order
+		for (String strategy : lookupOrder) {
+			IPath result = null;
+			switch (strategy) {
+			case STRATEGY_REPOSITORIES:
+				result = searchInRepositories(plugin, getConfiguredRepositories(store));
+				break;
+			case STRATEGY_TARGETS:
+				result = searchInTargets(plugin, getSelectedTargets(store));
+				break;
+			case STRATEGY_INDEX:
+				result = queryEclipseIndex(plugin);
+				break;
+			case STRATEGY_SITES:
+				result = queryAvailableSoftwareSites(plugin);
+				break;
+			default:
+				// Unknown strategy, skip
+				break;
 			}
-		}
-
-		// Search in selected target platforms
-		List<String> selectedTargets = getSelectedTargets(store);
-		if (!selectedTargets.isEmpty()) {
-			IPath result = searchInTargets(plugin, selectedTargets);
-			if (result != null) {
-				return result;
-			}
-		}
-
-		// Search in configured repositories
-		List<String> repositories = getConfiguredRepositories(store);
-		if (!repositories.isEmpty()) {
-			IPath result = searchInRepositories(plugin, repositories);
+			
 			if (result != null) {
 				return result;
 			}
@@ -82,25 +83,29 @@ public class ExternalPluginSourcePathLocator implements IPluginSourcePathLocator
 	}
 
 	/**
-	 * Queries known repositories for the source bundle.
+	 * Gets the configured lookup order from preferences.
 	 * 
-	 * @param plugin the plugin to locate sources for
-	 * @return the path to the source bundle or null if not found
+	 * @param store the preference store
+	 * @return the list of strategy identifiers in order
 	 */
-	private IPath queryKnownRepositories(IPluginBase plugin) {
-		// TODO: Implement querying known repositories
-		// This will be implemented in a future step
-		return null;
+	private List<String> getLookupOrder(IPreferenceStore store) {
+		String order = store.getString(IPreferenceConstants.SOURCE_LOOKUP_ORDER);
+		if (order == null || order.trim().isEmpty()) {
+			// Use default order
+			return Arrays.asList(STRATEGY_REPOSITORIES, STRATEGY_TARGETS, STRATEGY_INDEX, STRATEGY_SITES);
+		}
+		return Arrays.asList(order.split(",")); //$NON-NLS-1$
 	}
 
 	/**
-	 * Queries the Eclipse index for the source bundle.
+	 * Searches for the source bundle in the configured repositories.
 	 * 
-	 * @param plugin the plugin to locate sources for
+	 * @param plugin       the plugin to locate sources for
+	 * @param repositories the list of repository URLs
 	 * @return the path to the source bundle or null if not found
 	 */
-	private IPath queryEclipseIndex(IPluginBase plugin) {
-		// TODO: Implement querying the Eclipse index
+	private IPath searchInRepositories(IPluginBase plugin, List<String> repositories) {
+		// TODO: Implement searching in configured repositories
 		// This will be implemented in a future step
 		return null;
 	}
@@ -119,14 +124,25 @@ public class ExternalPluginSourcePathLocator implements IPluginSourcePathLocator
 	}
 
 	/**
-	 * Searches for the source bundle in the configured repositories.
+	 * Queries the Eclipse index for the source bundle.
 	 * 
-	 * @param plugin       the plugin to locate sources for
-	 * @param repositories the list of repository URLs
+	 * @param plugin the plugin to locate sources for
 	 * @return the path to the source bundle or null if not found
 	 */
-	private IPath searchInRepositories(IPluginBase plugin, List<String> repositories) {
-		// TODO: Implement searching in configured repositories
+	private IPath queryEclipseIndex(IPluginBase plugin) {
+		// TODO: Implement querying the Eclipse index
+		// This will be implemented in a future step
+		return null;
+	}
+
+	/**
+	 * Queries available software sites for the source bundle.
+	 * 
+	 * @param plugin the plugin to locate sources for
+	 * @return the path to the source bundle or null if not found
+	 */
+	private IPath queryAvailableSoftwareSites(IPluginBase plugin) {
+		// TODO: Implement querying available software sites
 		// This will be implemented in a future step
 		return null;
 	}

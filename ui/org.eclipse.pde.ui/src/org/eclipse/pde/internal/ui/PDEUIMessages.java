@@ -3446,9 +3446,10 @@ public class PDEUIMessages extends NLS {
 
 	public static String SourceLookupPreferencePage_description;
 	public static String SourceLookupPreferencePage_enableSourceLookup;
-	public static String SourceLookupPreferencePage_optionsGroup;
-	public static String SourceLookupPreferencePage_queryRepositories;
-	public static String SourceLookupPreferencePage_queryIndex;
+	public static String SourceLookupPreferencePage_orderGroup;
+	public static String SourceLookupPreferencePage_orderDescription;
+	public static String SourceLookupPreferencePage_up;
+	public static String SourceLookupPreferencePage_down;
 	public static String SourceLookupPreferencePage_targetsGroup;
 	public static String SourceLookupPreferencePage_repositoriesGroup;
 	public static String SourceLookupPreferencePage_addRepository;
@@ -3456,5 +3457,9 @@ public class PDEUIMessages extends NLS {
 	public static String SourceLookupPreferencePage_addRepositoryTitle;
 	public static String SourceLookupPreferencePage_addRepositoryMessage;
 	public static String SourceLookupPreferencePage_unnamedTarget;
+	public static String SourceLookupPreferencePage_strategy_REPOSITORIES;
+	public static String SourceLookupPreferencePage_strategy_TARGETS;
+	public static String SourceLookupPreferencePage_strategy_INDEX;
+	public static String SourceLookupPreferencePage_strategy_SITES;
 
 }
