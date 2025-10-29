@@ -135,8 +135,30 @@ public class ExternalPluginSourcePathLocator implements IPluginSourcePathLocator
 	 * @return the path to the source bundle or null if not found
 	 */
 	private IPath searchInRepositories(IPluginBase plugin, List<String> repositories) {
-		// TODO: Implement searching in configured repositories
-		// This will be implemented in a future step
+		if (repositories == null || repositories.isEmpty()) {
+			return null;
+		}
+
+		String pluginId = plugin.getId();
+		String sourcePluginId = pluginId + ".source"; //$NON-NLS-1$
+		String pluginVersion = plugin.getVersion();
+
+		// Loop through all configured repository URLs
+		for (String repositoryURL : repositories) {
+			try {
+				// Try to download the source bundle from this repository
+				URI repoURI = URI.create(repositoryURL.trim());
+				IPath result = downloadArtifact(repoURI, sourcePluginId, pluginVersion);
+				if (result != null) {
+					// Found and downloaded successfully
+					return result;
+				}
+			} catch (Exception e) {
+				// Log and continue to next repository
+				PDECore.log("Failed to search for source in repository " + repositoryURL + ": " + e.getMessage()); //$NON-NLS-1$ //$NON-NLS-2$
+			}
+		}
+
 		return null;
 	}
 
