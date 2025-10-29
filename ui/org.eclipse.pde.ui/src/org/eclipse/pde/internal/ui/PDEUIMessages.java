@@ -3444,4 +3444,17 @@ public class PDEUIMessages extends NLS {
 
 	public static String AddMatchingVersion_RequireBundle;
 
+	public static String SourceLookupPreferencePage_description;
+	public static String SourceLookupPreferencePage_enableSourceLookup;
+	public static String SourceLookupPreferencePage_optionsGroup;
+	public static String SourceLookupPreferencePage_queryRepositories;
+	public static String SourceLookupPreferencePage_queryIndex;
+	public static String SourceLookupPreferencePage_targetsGroup;
+	public static String SourceLookupPreferencePage_repositoriesGroup;
+	public static String SourceLookupPreferencePage_addRepository;
+	public static String SourceLookupPreferencePage_removeRepository;
+	public static String SourceLookupPreferencePage_addRepositoryTitle;
+	public static String SourceLookupPreferencePage_addRepositoryMessage;
+	public static String SourceLookupPreferencePage_unnamedTarget;
+
 }

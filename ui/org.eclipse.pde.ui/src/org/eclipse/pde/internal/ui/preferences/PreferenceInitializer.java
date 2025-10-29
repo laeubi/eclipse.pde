@@ -32,6 +32,13 @@ public class PreferenceInitializer extends AbstractPreferenceInitializer {
 		store.setDefault(IPreferenceConstants.WORKSPACE_PLUGINS_OVERRIDE_TARGET, true);
 		store.setDefault(IPreferenceConstants.DISABLE_API_ANALYSIS_BUILDER, false);
 		store.setDefault(IPreferenceConstants.TEST_PLUGIN_PATTERN, ICoreConstants.TEST_PLUGIN_PATTERN_DEFAULTVALUE);
+		
+		// Source Lookup defaults
+		store.setDefault(IPreferenceConstants.SOURCE_LOOKUP_ENABLED, false);
+		store.setDefault(IPreferenceConstants.SOURCE_LOOKUP_QUERY_REPOSITORIES, false);
+		store.setDefault(IPreferenceConstants.SOURCE_LOOKUP_QUERY_INDEX, false);
+		store.setDefault(IPreferenceConstants.SOURCE_LOOKUP_SELECTED_TARGETS, ""); //$NON-NLS-1$
+		store.setDefault(IPreferenceConstants.SOURCE_LOOKUP_REPOSITORIES, ""); //$NON-NLS-1$
 	}
 
 }

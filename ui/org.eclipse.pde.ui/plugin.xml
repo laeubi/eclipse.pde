@@ -96,6 +96,13 @@
             id="org.eclipse.pde.ui.LaunchingPreferencePage"
             name="Launching">
       </page>
+      <page
+            category="org.eclipse.pde.ui.MainPreferencePage"
+            class="org.eclipse.pde.internal.ui.preferences.SourceLookupPreferencePage"
+            id="org.eclipse.pde.ui.SourceLookupPreferencePage"
+            name="%preferences.sourcelookup.name">
+            <keywordReference id="org.eclipse.pde.ui.pde"/>
+      </page>
    </extension>
    <extension
    		point="org.eclipse.ui.keywords">
