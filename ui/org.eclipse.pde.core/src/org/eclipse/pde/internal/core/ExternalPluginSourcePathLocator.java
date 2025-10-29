@@ -13,13 +13,23 @@
  *******************************************************************************/
 package org.eclipse.pde.internal.core;
 
+import java.io.File;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
 
 import org.eclipse.core.runtime.IPath;
+import org.eclipse.core.runtime.Platform;
+import org.eclipse.equinox.p2.metadata.Version;
+import org.eclipse.equinox.spi.p2.publisher.PublisherHelper;
 import org.eclipse.jface.preference.IPreferenceStore;
 import org.eclipse.pde.core.IPluginSourcePathLocator;
 import org.eclipse.pde.core.plugin.IPluginBase;
+import org.eclipse.pde.internal.core.copyfrom.oomph.P2Index;
+import org.eclipse.pde.internal.core.copyfrom.oomph.P2Index.Repository;
+import org.eclipse.pde.internal.core.copyfrom.oomph.P2IndexImpl;
 import org.eclipse.pde.internal.ui.IPreferenceConstants;
 import org.eclipse.pde.internal.ui.PDEPlugin;
 
@@ -40,6 +50,8 @@ public class ExternalPluginSourcePathLocator implements IPluginSourcePathLocator
 	private static final String STRATEGY_TARGETS = "TARGETS"; //$NON-NLS-1$
 	private static final String STRATEGY_INDEX = "INDEX"; //$NON-NLS-1$
 	private static final String STRATEGY_SITES = "SITES"; //$NON-NLS-1$
+
+	private P2Index p2Index;
 
 	@Override
 	public IPath locateSource(IPluginBase plugin) {
@@ -130,8 +142,43 @@ public class ExternalPluginSourcePathLocator implements IPluginSourcePathLocator
 	 * @return the path to the source bundle or null if not found
 	 */
 	private IPath queryEclipseIndex(IPluginBase plugin) {
-		// TODO: Implement querying the Eclipse index
-		// This will be implemented in a future step
+		try {
+			// Lazy initialization of P2Index
+			if (p2Index == null) {
+				File indexCacheDir = new File(Platform.getStateLocation(PDECore.getDefault().getBundle()).toFile(),
+						"index"); //$NON-NLS-1$
+				p2Index = new P2IndexImpl(indexCacheDir);
+			}
+
+			String pluginId = plugin.getId();
+			String sourcePluginId = pluginId + ".source"; //$NON-NLS-1$
+
+			// Query the index for the source bundle using OSGi bundle capability
+			Map<Repository, Set<Version>> repositories = p2Index
+					.lookupCapabilities(PublisherHelper.CAPABILITY_NS_OSGI_BUNDLE, sourcePluginId);
+
+			if (repositories != null && !repositories.isEmpty()) {
+				// Find the repository with the matching version
+				String pluginVersion = plugin.getVersion();
+				for (Entry<Repository, Set<Version>> entry : repositories.entrySet()) {
+					for (Version version : entry.getValue()) {
+						if (version.toString().equals(pluginVersion)) {
+							// Found matching source bundle in the index
+							// The repository location is available but actual download/resolution
+							// would require P2 repository manager which is not available in this context
+							// For now, log the finding and return null (to be implemented with P2 integration)
+							PDECore.log("Found source bundle " + sourcePluginId + " version " + version //$NON-NLS-1$ //$NON-NLS-2$
+									+ " in repository " + entry.getKey().getLocation()); //$NON-NLS-1$
+							// TODO: Implement actual artifact resolution and download from the repository
+							return null;
+						}
+					}
+				}
+			}
+		} catch (Exception e) {
+			// Log but don't fail - this is just one lookup strategy
+			PDECore.log(e);
+		}
 		return null;
 	}
 
