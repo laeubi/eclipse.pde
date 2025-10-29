@@ -36,6 +36,7 @@ import org.eclipse.equinox.p2.metadata.Version;
 import org.eclipse.equinox.p2.query.IQueryResult;
 import org.eclipse.equinox.p2.query.QueryUtil;
 import org.eclipse.equinox.p2.repository.IRepository;
+import org.eclipse.equinox.p2.repository.IRepositoryManager;
 import org.eclipse.equinox.p2.repository.artifact.IArtifactRepository;
 import org.eclipse.equinox.p2.repository.artifact.IArtifactRepositoryManager;
 import org.eclipse.equinox.p2.repository.artifact.IArtifactRequest;
@@ -375,8 +376,43 @@ public class ExternalPluginSourcePathLocator implements IPluginSourcePathLocator
 	 * @return the path to the source bundle or null if not found
 	 */
 	private IPath queryAvailableSoftwareSites(IPluginBase plugin) {
-		// TODO: Implement querying available software sites
-		// This will be implemented in a future step
+		String pluginId = plugin.getId();
+		String sourcePluginId = pluginId + ".source"; //$NON-NLS-1$
+		String pluginVersion = plugin.getVersion();
+
+		try {
+			// Get the metadata repository manager
+			IMetadataRepositoryManager metadataManager = P2TargetUtils.getMetadataRepositoryManager();
+			if (metadataManager == null) {
+				return null;
+			}
+
+			// Get all known repositories from P2
+			URI[] knownRepositories = metadataManager.getKnownRepositories(IRepositoryManager.REPOSITORIES_ALL);
+			if (knownRepositories == null || knownRepositories.length == 0) {
+				return null;
+			}
+
+			// Loop through all known repositories
+			for (URI repositoryURI : knownRepositories) {
+				try {
+					// Try to download the source bundle from this repository
+					IPath result = downloadArtifact(repositoryURI, sourcePluginId, pluginVersion);
+					if (result != null) {
+						// Found and downloaded successfully
+						return result;
+					}
+				} catch (Exception e) {
+					// Log and continue to next repository
+					PDECore.log("Failed to search for source in known repository " + repositoryURI + ": " //$NON-NLS-1$ //$NON-NLS-2$
+							+ e.getMessage());
+				}
+			}
+		} catch (Exception e) {
+			// Log but don't fail - this is just one lookup strategy
+			PDECore.log(e);
+		}
+
 		return null;
 	}
 
