@@ -1058,6 +1058,34 @@ public class PluginBasedLaunchTest extends AbstractLaunchTest {
 		assertEquals("plugin.a*1.0.0@:false", BundleLauncherHelper.formatBundleEntry(plugin, null, "false"));
 	}
 
+	// --- test cases for system bundle exclusion (issue #2082) ---
+
+	@Test
+	public void testGetMergedBundleMap_systemBundleNotExposedFromHost() throws Exception {
+		// Test for https://github.com/eclipse-pde/eclipse.pde/issues/2082
+		// The system bundle (org.eclipse.osgi) from the host should not be
+		// exposed when setting up the launch configuration, even if it's
+		// not present in the target platform
+		var workspacePlugins = ofEntries( //
+				bundle("plugin.a", "1.0.0", //
+						entry(REQUIRE_BUNDLE, IPDEBuildConstants.BUNDLE_OSGI)));
+		var targetPlatformBundles = ofEntries( //
+				bundle(IPDEBuildConstants.BUNDLE_OSGI, "3.18.0"));
+
+		Consumer<ILaunchConfigurationWorkingCopy> launchConfigSetup = wc -> {
+			wc.setAttribute(IPDELauncherConstants.SELECTED_WORKSPACE_BUNDLES, Set.of("plugin.a*1.0.0"));
+			wc.setAttribute(IPDELauncherConstants.AUTOMATIC_INCLUDE_REQUIREMENTS, true);
+		};
+
+		// The system bundle from the target platform should be included,
+		// but the one from the host should NOT be included
+		Set<BundleLocationDescriptor> expectedBundles = Set.of( //
+				workspaceBundle("plugin.a", "1.0.0"), //
+				targetBundle(IPDEBuildConstants.BUNDLE_OSGI, "3.18.0"));
+
+		assertGetMergedBundleMap(workspacePlugins, targetPlatformBundles, launchConfigSetup, expectedBundles);
+	}
+
 	// --- utilities ---
 
 	private void assertGetMergedBundleMap(Map<NameVersionDescriptor, Map<String, String>> workspacePlugins,
