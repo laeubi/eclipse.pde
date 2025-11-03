@@ -61,6 +61,7 @@ import org.osgi.framework.FrameworkUtil;
 import org.osgi.framework.ServiceReference;
 import org.osgi.framework.ServiceRegistration;
 import org.osgi.framework.Version;
+import org.osgi.service.resolver.Resolver;
 import org.osgi.util.tracker.ServiceTracker;
 
 import aQute.bnd.build.Workspace;
@@ -230,6 +231,8 @@ public class PDECore extends Plugin implements DebugOptionsListener {
 		return description.getVersion();
 	});
 
+	private ServiceTracker<Resolver, Resolver> resolverServiceTracker;
+
 	public PDECore() {
 		inst = this;
 	}
@@ -362,6 +365,8 @@ public class PDECore extends Plugin implements DebugOptionsListener {
 	public void start(BundleContext context) throws Exception {
 		super.start(context);
 		fBundleContext = context;
+		resolverServiceTracker = new ServiceTracker<>(context, Resolver.class, null);
+		resolverServiceTracker.open();
 
 		fJavaElementChangeListener = new JavaElementChangeListener();
 		fJavaElementChangeListener.start();
@@ -409,6 +414,10 @@ public class PDECore extends Plugin implements DebugOptionsListener {
 		workspace.addResourceChangeListener(ClasspathContainerState.CHANGE_LISTENER, IResourceChangeEvent.PRE_DELETE);
 		fBundleContext.registerService(Workspace.class, new BndWorkspaceServiceFactory(),
 				FrameworkUtil.asDictionary(Map.of(Constants.SERVICE_RANKING, -10)));
+	}
+
+	public Resolver getResolverService() {
+		return resolverServiceTracker.getService();
 	}
 
 	public BundleContext getBundleContext() {
