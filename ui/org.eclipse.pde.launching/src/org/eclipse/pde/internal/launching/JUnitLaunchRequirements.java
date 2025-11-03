@@ -42,8 +42,7 @@ public class JUnitLaunchRequirements {
 	private static final String JUNIT5_JDT_RUNTIME_PLUGIN = "org.eclipse.jdt.junit5.runtime"; //$NON-NLS-1$
 
 	public static void addRequiredJunitRuntimePlugins(ILaunchConfiguration configuration, Map<String, List<IPluginModelBase>> collectedModels, Map<IPluginModelBase, String> startLevelMap) throws CoreException {
-		Collection<String> runtimePlugins = getRequiredJunitRuntimeEclipsePlugins(configuration);
-		Set<BundleDescription> addedRuntimeBundles = addAbsentRequirements(runtimePlugins, collectedModels, startLevelMap);
+		Set<BundleDescription> addedRuntimeBundles = addAbsentRequirements(getRequiredJunitRuntimeEclipsePlugins(configuration), collectedModels, startLevelMap);
 		Set<BundleDescription> runtimeRequirements = DependencyManager.findRequirementsClosure(addedRuntimeBundles);
 		addAbsentRequirements(runtimeRequirements, collectedModels, startLevelMap);
 	}
