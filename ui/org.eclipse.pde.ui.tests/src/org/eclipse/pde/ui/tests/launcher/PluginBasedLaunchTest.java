@@ -1063,9 +1063,11 @@ public class PluginBasedLaunchTest extends AbstractLaunchTest {
 	@Test
 	public void testGetMergedBundleMap_systemBundleNotExposedFromHost() throws Exception {
 		// Test for https://github.com/eclipse-pde/eclipse.pde/issues/2082
-		// The system bundle (org.eclipse.osgi) from the host should not be
-		// exposed when setting up the launch configuration, even if it's
-		// not present in the target platform
+		// When launching a JUnit plugin test without org.eclipse.pde.feature.group
+		// in the target platform, the system bundle (org.eclipse.osgi) from the
+		// host should NOT be exposed to avoid conflicts with the target platform's
+		// system bundle. Before the fix, this would cause duplicate system bundles
+		// and result in launch errors.
 		var workspacePlugins = ofEntries( //
 				bundle("plugin.a", "1.0.0", //
 						entry(REQUIRE_BUNDLE, IPDEBuildConstants.BUNDLE_OSGI)));
@@ -1077,8 +1079,8 @@ public class PluginBasedLaunchTest extends AbstractLaunchTest {
 			wc.setAttribute(IPDELauncherConstants.AUTOMATIC_INCLUDE_REQUIREMENTS, true);
 		};
 
-		// The system bundle from the target platform should be included,
-		// but the one from the host should NOT be included
+		// Expected: Only the system bundle from the target platform should be included.
+		// The system bundle from the host must NOT be included to avoid conflicts.
 		Set<BundleLocationDescriptor> expectedBundles = Set.of( //
 				workspaceBundle("plugin.a", "1.0.0"), //
 				targetBundle(IPDEBuildConstants.BUNDLE_OSGI, "3.18.0"));
