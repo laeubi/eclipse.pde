@@ -198,10 +198,15 @@ public class JavaResolutionFactory {
 					if (!(model instanceof IPluginModelBase base)) {
 						return;
 					}
-					String[] pluginIdStrings = null;
 					if ("JUnit 5 bundles".equals(getChangeObject())) { //$NON-NLS-1$
-						pluginIdStrings = getJUnit5Bundles();
+						if (!isUndo()) {
+							addJUnit5Bundles(base);
+						} else {
+							removeJUnit5Bundles(base);
+						}
+						return;
 					}
+					String[] pluginIdStrings = null;
 					if (getChangeObject() instanceof ExportPackageDescription) {
 						pluginIdStrings = new String[1];
 						pluginIdStrings[0] = ((ExportPackageDescription) getChangeObject()).getSupplier()
@@ -235,8 +240,50 @@ public class JavaResolutionFactory {
 					}
 				}
 
-				private String[] getJUnit5Bundles() {
-					return new String[] { "org.junit", "junit-jupiter-api" }; //$NON-NLS-1$ //$NON-NLS-2$
+				private void addJUnit5Bundles(IPluginModelBase base) throws CoreException {
+					String[][] bundles = getJUnit5Bundles();
+					for (String[] bundleInfo : bundles) {
+						String pluginId = bundleInfo[0];
+						String version = bundleInfo.length > 1 ? bundleInfo[1] : null;
+						
+						IPluginImport[] imports = base.getPluginBase().getImports();
+						boolean duplicate = false;
+						for (IPluginImport iPluginImport : imports) {
+							if (iPluginImport.getId().equals(pluginId)) {
+								duplicate = true;
+								break;
+							}
+						}
+						if (duplicate) {
+							continue;
+						}
+						IPluginImport impt = base.getPluginFactory().createImport();
+						impt.setId(pluginId);
+						if (version != null) {
+							impt.setVersion(version);
+						}
+						base.getPluginBase().add(impt);
+					}
+				}
+
+				private void removeJUnit5Bundles(IPluginModelBase base) throws CoreException {
+					String[][] bundles = getJUnit5Bundles();
+					for (String[] bundleInfo : bundles) {
+						String pluginId = bundleInfo[0];
+						IPluginImport[] imports = base.getPluginBase().getImports();
+						for (IPluginImport pluginImport : imports) {
+							if (pluginImport.getId().equals(pluginId)) {
+								base.getPluginBase().remove(pluginImport);
+							}
+						}
+					}
+				}
+
+				private String[][] getJUnit5Bundles() {
+					return new String[][] { 
+						{ "org.junit" }, //$NON-NLS-1$
+						{ "junit-jupiter-api", "[5.0.0,6.0.0)" } //$NON-NLS-1$ //$NON-NLS-2$
+					};
 				}
 			}, new NullProgressMonitor());
 
