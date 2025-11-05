@@ -199,6 +199,15 @@ public class P2TargetUtils {
 	 * Locks for profile operations, keyed by profile ID. This ensures that operations
 	 * on the same profile (which can be shared by multiple ITargetDefinition instances)
 	 * are properly synchronized to prevent timestamp conflicts.
+	 * <p>
+	 * Lock objects persist for the lifetime of the application, which is acceptable because:
+	 * <ul>
+	 * <li>Profile IDs are based on stable target file paths</li>
+	 * <li>The number of unique target files used in a session is typically small</li>
+	 * <li>Lock objects have minimal memory footprint</li>
+	 * <li>Removing locks would introduce complexity and potential race conditions</li>
+	 * </ul>
+	 * </p>
 	 */
 	private static final ConcurrentHashMap<String, Object> PROFILE_LOCKS = new ConcurrentHashMap<>();
 
@@ -828,14 +837,15 @@ public class P2TargetUtils {
 	 * provisioning operations, so the in-memory profile reference must be refreshed.
 	 *
 	 * @param profile the current profile reference (may have outdated timestamp)
-	 * @param target the target definition
+	 * @param target the target definition (used only for error messages)
 	 * @return the refreshed profile from the registry
 	 * @throws CoreException if the profile was removed or cannot be loaded
 	 */
 	private IProfile refreshProfile(IProfile profile, ITargetDefinition target) throws CoreException {
-		IProfile refreshed = getProfileRegistry().getProfile(profile.getProfileId());
+		String profileId = profile.getProfileId();
+		IProfile refreshed = getProfileRegistry().getProfile(profileId);
 		if (refreshed == null) {
-			throw new CoreException(Status.error("Profile was removed: " + getProfileId(target))); //$NON-NLS-1$
+			throw new CoreException(Status.error("Profile was removed: " + profileId)); //$NON-NLS-1$
 		}
 		return refreshed;
 	}
@@ -848,9 +858,13 @@ public class P2TargetUtils {
 	 *
 	 * NOTE: this is a potentially *very* heavyweight operation.
 	 *
-	 * NOTE: this method is synchronized as it is effectively a "test and set" caching method. Two
-	 * threads getting the profile at the same time should not execute concurrently or the profiles
-	 * will get out of sync.
+	 * NOTE: this method uses two levels of synchronization:
+	 * <ul>
+	 * <li>Instance-level (synchronized method): Protects this P2TargetUtils instance's state (fProfile, etc.)</li>
+	 * <li>Profile-level (profile ID lock): Prevents concurrent access to the same P2 profile from different
+	 * P2TargetUtils instances, which can occur when multiple ITargetDefinition objects refer to the same
+	 * target file and thus share a profile ID</li>
+	 * </ul>
 	 *
 	 * @throws CoreException if there was a problem synchronizing
 	 */
@@ -865,7 +879,7 @@ public class P2TargetUtils {
 	}
 
 	/**
-	 * Internal implementation of synchronize that runs within the profile lock.
+	 * Internal implementation of synchronize that runs within both instance and profile locks.
 	 */
 	private void synchronizeInternal(ITargetDefinition target, IProgressMonitor monitor) throws CoreException {
 		SubMonitor progress = SubMonitor.convert(monitor, 100);
