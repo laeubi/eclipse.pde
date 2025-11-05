@@ -15,7 +15,6 @@ package org.eclipse.pde.api.tools.internal.model;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
@@ -67,7 +66,7 @@ public class ProjectTypeContainer extends ApiElement implements IApiTypeContaine
 	public ProjectTypeContainer(IApiElement parent, IContainer container, IPackageFragmentRoot packageFragmentRoot) {
 		super(parent, IApiElement.API_TYPE_CONTAINER, container.getName());
 		this.fRoot = container;
-		this.fPackageFragmentRoot = Objects.requireNonNull(packageFragmentRoot);
+		this.fPackageFragmentRoot = packageFragmentRoot;
 	}
 
 	@Override
@@ -159,8 +158,20 @@ public class ProjectTypeContainer extends ApiElement implements IApiTypeContaine
 	public String[] getPackageNames() throws CoreException {
 		if (fPackageNames == null) {
 			SortedSet<String> names = new TreeSet<>();
-			if (fPackageFragmentRoot.exists()) {
-				collectPackageNames(names, fPackageFragmentRoot);
+			// Try to use JDT API if we have a package fragment root and it corresponds to our container
+			boolean useJdtApi = false;
+			if (fPackageFragmentRoot != null && fPackageFragmentRoot.exists()) {
+				IResource rootResource = fPackageFragmentRoot.getResource();
+				// Use JDT API only if the package fragment root's resource matches our container
+				// This ensures we're querying the right location (e.g., output folder vs source folder)
+				if (rootResource != null && rootResource.equals(fRoot)) {
+					useJdtApi = true;
+					collectPackageNamesFromJdt(names, fPackageFragmentRoot);
+				}
+			}
+			// Fall back to filesystem scanning if JDT API is not applicable
+			if (!useJdtApi) {
+				collectPackageNamesFromFilesystem(names, fRoot);
 			}
 			fPackageNames = names.toArray(String[]::new);
 		}
@@ -174,7 +185,7 @@ public class ProjectTypeContainer extends ApiElement implements IApiTypeContaine
 	 * @param root package fragment root to traverse
 	 * @throws CoreException if unable to traverse the package fragment root
 	 */
-	private static void collectPackageNames(Set<String> collector, IPackageFragmentRoot root) throws CoreException {
+	private static void collectPackageNamesFromJdt(Set<String> collector, IPackageFragmentRoot root) throws CoreException {
 		IJavaElement[] children = root.getChildren();
 		if (children != null) {
 			for (IJavaElement element : children) {
@@ -187,6 +198,27 @@ public class ProjectTypeContainer extends ApiElement implements IApiTypeContaine
 				}
 			}
 		}
+	}
+
+	/**
+	 * Collects package names by traversing the filesystem directory structure.
+	 * This method is used as a fallback when JDT API is not applicable, such as
+	 * when the package fragment root doesn't match the output container.
+	 *
+	 * @param collector set to collect package names
+	 * @param dir directory to traverse
+	 * @throws CoreException if unable to traverse the directory
+	 */
+	private static void collectPackageNamesFromFilesystem(Set<String> collector, IContainer dir) throws CoreException {
+		int segmentCount = dir.getFullPath().segmentCount();
+		dir.accept(proxy -> {
+			if (proxy.getType() == IResource.FOLDER) {
+				IPath relativePath = proxy.requestFullPath().removeFirstSegments(segmentCount);
+				String packageName = relativePath.toString().replace(IPath.SEPARATOR, '.');
+				return collector.add(packageName);
+			}
+			return false;
+		}, IResource.NONE);
 	}
 
 	@Override
