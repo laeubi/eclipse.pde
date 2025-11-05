@@ -37,6 +37,7 @@ public class PDEMessages extends NLS {
 	public static String JUnitLaunchConfiguration_error_notaplugin;
 	public static String JUnitLaunchConfiguration_error_missingPlugin;
 	public static String JUnitLaunchConfiguration_error_JUnitLaunchAndRuntimeMissmatch;
+	public static String JUnitLaunchConfiguration_error_JUnitLaunchAndRuntimeMissmatch_withRequiringBundle;
 
 	public static String OSGiLaunchConfiguration_cannotFindLaunchConfiguration;
 	public static String OSGiLaunchConfiguration_selected;
