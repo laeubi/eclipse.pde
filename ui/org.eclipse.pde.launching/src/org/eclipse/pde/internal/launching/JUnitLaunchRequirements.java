@@ -18,6 +18,7 @@ import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
@@ -34,6 +35,16 @@ import org.eclipse.pde.internal.core.DependencyManager;
 import org.eclipse.pde.internal.core.PDECore;
 import org.eclipse.pde.internal.launching.launcher.BundleLauncherHelper;
 import org.osgi.framework.wiring.BundleRevision;
+import org.osgi.resource.Capability;
+import org.osgi.resource.Namespace;
+import org.osgi.resource.Requirement;
+import org.osgi.resource.Resource;
+import org.osgi.resource.Wire;
+import org.osgi.resource.Wiring;
+import org.osgi.service.resolver.HostedCapability;
+import org.osgi.service.resolver.ResolutionException;
+import org.osgi.service.resolver.ResolveContext;
+import org.osgi.service.resolver.Resolver;
 
 public class JUnitLaunchRequirements {
 
@@ -43,7 +54,78 @@ public class JUnitLaunchRequirements {
 
 	public static void addRequiredJunitRuntimePlugins(ILaunchConfiguration configuration, Map<String, List<IPluginModelBase>> collectedModels, Map<IPluginModelBase, String> startLevelMap) throws CoreException {
 		Set<BundleDescription> addedRuntimeBundles = addAbsentRequirements(getRequiredJunitRuntimeEclipsePlugins(configuration), collectedModels, startLevelMap);
+		System.out.println("Adding runtime bundles:");
+		for (BundleDescription bundleDescription : addedRuntimeBundles) {
+			System.out.println("- " + bundleDescription);
+		}
+		Resolver resolver = PDECore.getDefault().getResolverService();
+		try {
+			System.out.println("Resolving...");
+			Map<Resource, List<Wire>> map = resolver.resolve(new ResolveContext() {
+
+
+				@Override
+				public boolean isEffective(Requirement requirement) {
+					System.out.println("isEffective? " + requirement);
+					//First check if the requirement is effective at all...
+					String effective = requirement.getDirectives().get(Namespace.REQUIREMENT_EFFECTIVE_DIRECTIVE);
+					if (effective != null && !Namespace.EFFECTIVE_RESOLVE.equals(effective)) {
+						return false;
+					}
+					//Now check if it is optional, we can skip these for our use case here...
+					String resolution = requirement.getDirectives().get(Namespace.REQUIREMENT_RESOLUTION_DIRECTIVE);
+					if (Namespace.RESOLUTION_OPTIONAL.equalsIgnoreCase(resolution)) {
+						return false;
+					}
+					return true;
+				}
+
+				@Override
+				public int insertHostedCapability(List<Capability> capabilities, HostedCapability hostedCapability) {
+					//We simply insert it here 
+					capabilities.add(0, hostedCapability);
+					return 0;
+				}
+
+				@Override
+				public Map<Resource, Wiring> getWirings() {
+					//We don't want to assume any existing wirings
+					return Map.of();
+				}
+
+				@Override
+				public List<Capability> findProviders(Requirement requirement) {
+					System.out.println("findProviders: " + requirement);
+					List<Capability> providersInTarget = PDECore.findProvidersInTarget(requirement);
+					if (providersInTarget.isEmpty()) {
+						List<Capability> platform = PDECore.findProvidersInRunningPlatform(requirement);
+						System.out.println("From platform " + platform);
+						return platform;
+					}
+					System.out.println("From target: " + providersInTarget);
+					return providersInTarget;
+				}
+
+				@Override
+				public Collection<Resource> getMandatoryResources() {
+					return addedRuntimeBundles.stream().map(Resource.class::cast).toList();
+				}
+			});
+			System.out.println("--- Resolved by OSGI resolver ---");
+			for (Entry<Resource, List<Wire>> entry : map.entrySet()) {
+				System.out.println(" - " + entry.getKey());
+			}
+		} catch (ResolutionException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		System.out.println("-----");
+
 		Set<BundleDescription> runtimeRequirements = DependencyManager.findRequirementsClosure(addedRuntimeBundles);
+		System.out.println("Dependency manager result:");
+		for (BundleDescription bundleDescription : runtimeRequirements) {
+			System.out.println("- " + bundleDescription);
+		}
 		addAbsentRequirements(runtimeRequirements, collectedModels, startLevelMap);
 	}
 

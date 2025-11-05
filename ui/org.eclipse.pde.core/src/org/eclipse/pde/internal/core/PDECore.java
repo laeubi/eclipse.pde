@@ -15,6 +15,7 @@ package org.eclipse.pde.internal.core;
 
 import java.lang.reflect.InvocationTargetException;
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -49,18 +50,25 @@ import org.eclipse.pde.core.target.ITargetDefinition;
 import org.eclipse.pde.core.target.ITargetPlatformService;
 import org.eclipse.pde.internal.core.bnd.BndResourceChangeListener;
 import org.eclipse.pde.internal.core.bnd.BndWorkspaceServiceFactory;
+import org.eclipse.pde.internal.core.bnd.TargetRepository;
 import org.eclipse.pde.internal.core.builders.FeatureRebuilder;
 import org.eclipse.pde.internal.core.builders.PluginRebuilder;
 import org.eclipse.pde.internal.core.project.BundleProjectService;
 import org.eclipse.pde.internal.core.schema.SchemaRegistry;
 import org.eclipse.pde.internal.core.target.P2TargetUtils;
 import org.eclipse.pde.internal.core.target.TargetPlatformService;
+import org.osgi.framework.Bundle;
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.Constants;
 import org.osgi.framework.FrameworkUtil;
 import org.osgi.framework.ServiceReference;
 import org.osgi.framework.ServiceRegistration;
 import org.osgi.framework.Version;
+import org.osgi.framework.wiring.BundleCapability;
+import org.osgi.framework.wiring.BundleRequirement;
+import org.osgi.framework.wiring.BundleWiring;
+import org.osgi.resource.Capability;
+import org.osgi.resource.Requirement;
 import org.osgi.service.resolver.Resolver;
 import org.osgi.util.tracker.ServiceTracker;
 
@@ -547,5 +555,28 @@ public class PDECore extends Plugin implements DebugOptionsListener {
 		}
 		return repositoryListenerServiceTracker.getTracked().values().stream();
 
+	}
+
+	public static List<Capability> findProvidersInTarget(Requirement requirement) {
+		return TargetRepository.getTargetRepository().findProvider(requirement);
+	}
+
+	public static List<Capability> findProvidersInRunningPlatform(Requirement requirement) {
+		Bundle[] bundles = getDefault().fBundleContext.getBundles();
+		List<Capability> result = new ArrayList<>();
+		if (requirement instanceof BundleRequirement req) {
+			for (Bundle bundle : bundles) {
+				BundleWiring wiring = bundle.adapt(BundleWiring.class);
+				if (wiring != null) {
+					List<BundleCapability> capabilities = wiring.getCapabilities(requirement.getNamespace());
+					for (BundleCapability capability : capabilities) {
+						if (req.matches(capability)) {
+							result.add(capability);
+						}
+					}
+				}
+			}
+		}
+		return result;
 	}
 }
