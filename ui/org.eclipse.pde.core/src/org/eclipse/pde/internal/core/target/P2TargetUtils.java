@@ -810,12 +810,34 @@ public class P2TargetUtils {
 	 * Gets or creates a lock object for the given profile ID. This ensures that
 	 * operations on the same profile (which can be shared by multiple ITargetDefinition
 	 * instances) are properly synchronized.
+	 * <p>
+	 * Note: Lock objects accumulate in memory but this is acceptable since profile IDs
+	 * are based on stable target file paths and the lock objects are small.
+	 * </p>
 	 *
 	 * @param profileId the profile identifier
 	 * @return a lock object for the profile
 	 */
 	private static Object getProfileLock(String profileId) {
 		return PROFILE_LOCKS.computeIfAbsent(profileId, k -> new Object());
+	}
+
+	/**
+	 * Refreshes a profile from the registry after operations that modify it.
+	 * The P2 engine creates new profile snapshots with updated timestamps during
+	 * provisioning operations, so the in-memory profile reference must be refreshed.
+	 *
+	 * @param profile the current profile reference (may have outdated timestamp)
+	 * @param target the target definition
+	 * @return the refreshed profile from the registry
+	 * @throws CoreException if the profile was removed or cannot be loaded
+	 */
+	private IProfile refreshProfile(IProfile profile, ITargetDefinition target) throws CoreException {
+		IProfile refreshed = getProfileRegistry().getProfile(profile.getProfileId());
+		if (refreshed == null) {
+			throw new CoreException(Status.error("Profile was removed: " + getProfileId(target))); //$NON-NLS-1$
+		}
+		return refreshed;
 	}
 
 	/**
@@ -878,11 +900,7 @@ public class P2TargetUtils {
 				resolveWithSlicer(target, profile, progress.split(60));
 			}
 			// Refresh the profile from registry as resolve operations may have updated it
-			profile = getProfileRegistry().getProfile(profile.getProfileId());
-			if (profile == null) {
-				throw new CoreException(
-						Status.error("Profile was removed after resolving: " + getProfileId(target))); //$NON-NLS-1$
-			}
+			profile = refreshProfile(profile, target);
 			fProfile = profile;
 			// If we are updating a profile then delete the old snapshot on success.
 			notify(target, progress.split(15));
@@ -1224,11 +1242,7 @@ public class P2TargetUtils {
 
 		// Refresh the profile from the registry after perform, as the perform operation
 		// creates a new profile snapshot with an updated timestamp
-		profile = getProfileRegistry().getProfile(profile.getProfileId());
-		if (profile == null) {
-			throw new CoreException(
-					Status.error("Profile was removed after provisioning: " + getProfileId(target))); //$NON-NLS-1$
-		}
+		profile = refreshProfile(profile, target);
 
 		// Now that we have a plan with all the binary and explicit bundles, do a second pass and add
 		// in all the source.
