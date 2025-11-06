@@ -111,6 +111,10 @@ public class TargetPlatformUtil {
 		if (!result.isOK()) {
 			throw new AssertionError(result.getMessage(), result.getException());
 		}
+
+		// Wait for any follow-up jobs (e.g., PluginRegistry updates) to complete
+		// This ensures that the PluginRegistry is fully synchronized with the new target
+		TestUtils.waitForJobs("loadAndSetTarget", 100, 10000);
 	}
 
 	private static List<NameVersionDescriptor> addRunningPlatformBundles(Collection<ITargetLocation> bundleContainers,
