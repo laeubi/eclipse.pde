@@ -132,7 +132,7 @@ public class ApiToolsLabelProvider extends BaseLabelProvider implements ILabelPr
 				case IDelta.API_BASELINE_ELEMENT_TYPE:
 					return getBaselineImage();
 				case IDelta.API_COMPONENT_ELEMENT_TYPE: {
-					IPath path = IPath.fromOSString(problem.getResourcePath());
+					IPath path = IPath.fromPortableString(problem.getResourcePath());
 					// try to find the component via the resource handle
 					IResource res = ResourcesPlugin.getWorkspace().getRoot().findMember(path);
 					if (res != null) {

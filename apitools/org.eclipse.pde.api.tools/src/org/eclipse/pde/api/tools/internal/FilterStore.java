@@ -208,7 +208,7 @@ public class FilterStore implements IApiFilterStore {
 			// one is missing a path they may still be equal
 			String problemPath = problem.getResourcePath();
 			String filterProblemPath = filterProblem.getResourcePath();
-			if (problemPath != null && filterProblemPath != null && !(IPath.fromOSString(problemPath).equals(IPath.fromOSString(filterProblemPath)))) {
+			if (problemPath != null && filterProblemPath != null && !(IPath.fromPortableString(problemPath).equals(IPath.fromPortableString(filterProblemPath)))) {
 				return false;
 			}
 			String problemTypeName = problem.getTypeName();
