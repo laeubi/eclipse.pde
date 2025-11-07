@@ -499,9 +499,10 @@ public class JavadocConversionRefactoring extends Refactoring {
 		 * Adds any missing annotations and optionally removes any Javadoc tags
 		 */
 		void updateNode(BodyDeclaration body, IApiAnnotations annotations) {
-			// First, extract text from Javadoc tags
-			Map<String, String> tagTexts = new HashMap<>();
 			Javadoc docnode = body.getJavadoc();
+			
+			// Extract text from Javadoc tags
+			Map<String, String> tagTexts = new HashMap<>();
 			if (docnode != null) {
 				List<TagElement> tags = docnode.tags();
 				for (TagElement tag : tags) {
@@ -560,16 +561,15 @@ public class JavadocConversionRefactoring extends Refactoring {
 					ensureImport(JavadocTagManager.ANNOTATION_NOREFERENCE);
 				}
 			}
-			if (this.remove) {
-				// get rid of all API tools tags if the user says so
-				if (docnode != null) {
-					List<TagElement> tags = docnode.tags();
-					lrewrite = rewrite.getListRewrite(docnode, Javadoc.TAGS_PROPERTY);
-					for (TagElement tag : tags) {
-						String tagName = tag.getTagName();
-						if (tagName != null && JavadocTagManager.ALL_TAGS.contains(tagName)) {
-							lrewrite.remove(tag, null);
-						}
+			
+			// Remove Javadoc tags if requested
+			if (this.remove && docnode != null) {
+				List<TagElement> tags = docnode.tags();
+				lrewrite = rewrite.getListRewrite(docnode, Javadoc.TAGS_PROPERTY);
+				for (TagElement tag : tags) {
+					String tagName = tag.getTagName();
+					if (tagName != null && JavadocTagManager.ALL_TAGS.contains(tagName)) {
+						lrewrite.remove(tag, null);
 					}
 				}
 			}
