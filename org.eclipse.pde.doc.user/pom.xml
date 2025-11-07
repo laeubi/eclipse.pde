@@ -28,7 +28,7 @@
   
   <profiles>
 		<profile>
-			<!-- Only enable this for individual bundles builds as otherhwise the ibuild repository is not aviable and we might run into problems -->
+			<!-- Only enable this for individual bundles builds as otherwise the ibuild repository is not available and we might run into problems -->
 			<id>build-individual-bundles</id>
 			<properties>
 				<pde.docs.baselinemode>warn</pde.docs.baselinemode>
@@ -201,7 +201,7 @@
                                     ;${eclipse.pde.ui.ui}/org.eclipse.pde.launching/src
                                     ;${eclipse.pde.ui.ui}/org.eclipse.pde.ui/src</sourcepath>
                         <offlineLinks>
-                            <!-- This is used to make linkt to other docs from eclipse relative -->
+                            <!-- This is used to make link to other docs from eclipse relative -->
                             <offlineLink>
                                 <url>./../../../org.eclipse.platform.doc.isv/reference/api</url>
                                 <location>${project.build.directory}/unpack/org.eclipse.platform.doc.isv/reference/api</location>
