@@ -252,4 +252,37 @@ public class ApiFilterStoreTests extends AbstractApiTest {
 		assertFalse("the new filter store must not be an instance of ApiFilterStore", store instanceof ApiFilterStore); //$NON-NLS-1$
 		assertTrue("the new filter store must be an instance of FilterStore", store instanceof FilterStore); //$NON-NLS-1$
 	}
+
+	/**
+	 * Tests that filters work correctly when the resource path uses portable string format.
+	 * This test verifies that problems created with toPortableString() paths are correctly
+	 * matched with filters, which is important for Tycho builds where paths may differ from IDE builds.
+	 */
+	@Test
+	public void testFilterWithPortablePath() throws CoreException {
+		IApiBaseline profile = ApiPlugin.getDefault().getApiBaselineManager().getWorkspaceBaseline();
+		IApiComponent component = profile.getApiComponent(TESTING_PLUGIN_PROJECT_NAME);
+		assertNotNull("the testing project api component must exist", component); //$NON-NLS-1$
+		IProject project = getTestingJavaProject(TESTING_PLUGIN_PROJECT_NAME).getProject();
+		IResource resource = project.findMember(IPath.fromOSString("src/x/y/z/C4.java")); //$NON-NLS-1$
+		assertNotNull("the resource src/x/y/z/C4.java must exist", resource); //$NON-NLS-1$
+
+		// Create a problem with portable path (as done in BaseApiAnalyzer)
+		String portablePath = resource.getProjectRelativePath().toPortableString();
+		IApiProblem problem = ApiProblemFactory.newApiProblem(portablePath,
+				null, null, null, null, -1, -1, -1, IApiProblem.CATEGORY_USAGE, 0, RestrictionModifiers.NO_IMPLEMENT,
+				IApiProblem.NO_FLAGS);
+
+		// Add filter
+		IApiFilterStore store = component.getFilterStore();
+		store.addFiltersFor(new IApiProblem[] { problem });
+
+		// Create another problem with the same portable path to test isFiltered
+		IApiProblem testProblem = ApiProblemFactory.newApiProblem(portablePath,
+				null, null, null, null, -1, -1, -1, IApiProblem.CATEGORY_USAGE, 0, RestrictionModifiers.NO_IMPLEMENT,
+				IApiProblem.NO_FLAGS);
+
+		// This should work with the fix (fromPortableString instead of fromOSString)
+		assertTrue("problem with portable path should be filtered", store.isFiltered(testProblem)); //$NON-NLS-1$
+	}
 }
