@@ -158,6 +158,15 @@ public class ResolutionGenerator implements IMarkerResolutionGenerator2 {
 		case PDEMarkerFactory.M_NO_SPACE_AFTER_COLON:
 			return new IMarkerResolution[] {
 					new AddSpaceBeforeValue(AbstractPDEMarkerResolution.CREATE_TYPE, marker) };
+		case PDEMarkerFactory.M_MISSING_UPPER_BOUND_REQ_BUNDLE:
+			return new IMarkerResolution[] {
+					new AddVersionRangeUpperBoundResolution(AbstractPDEMarkerResolution.RENAME_TYPE, marker, false) };
+		case PDEMarkerFactory.M_MISSING_UPPER_BOUND_IMP_PKG:
+			return new IMarkerResolution[] {
+					new AddVersionRangeUpperBoundResolution(AbstractPDEMarkerResolution.RENAME_TYPE, marker, true) };
+		case PDEMarkerFactory.M_IMP_PKG_NO_VERSION_EXPORT_NO_VERSION:
+			return new IMarkerResolution[] {
+					new AddVersionToExportAndImportResolution(AbstractPDEMarkerResolution.RENAME_TYPE, marker) };
 		}
 		return NO_RESOLUTIONS;
 	}

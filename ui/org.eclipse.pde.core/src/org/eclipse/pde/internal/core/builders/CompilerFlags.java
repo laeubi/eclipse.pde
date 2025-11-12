@@ -79,6 +79,9 @@ public class CompilerFlags {
 	public static final String P_MISSING_VERSION_EXP_PKG = "compilers.p.missing-version-export-package"; //$NON-NLS-1$
 	public static final String P_MISSING_VERSION_IMP_PKG = "compilers.p.missing-version-import-package"; //$NON-NLS-1$
 	public static final String P_MISSING_VERSION_REQ_BUNDLE = "compilers.p.missing-version-require-bundle"; //$NON-NLS-1$
+	public static final String P_MISSING_UPPER_VERSION_BOUND_REQ_BUNDLE = "compilers.p.missing-upper-version-bound-require-bundle"; //$NON-NLS-1$
+	public static final String P_MISSING_UPPER_VERSION_BOUND_IMP_PKG = "compilers.p.missing-upper-version-bound-import-package"; //$NON-NLS-1$
+	public static final String P_IMP_PKG_MISSING_VERSION_FOR_EXPORT_WITHOUT_VERSION = "compilers.p.import-package-missing-version-for-export-without-version"; //$NON-NLS-1$
 
 	/**
 	 * schema preferences
