@@ -261,6 +261,29 @@ public class PDEProject {
 	}
 
 	/**
+	 * Returns the resource in the specified project corresponding to its
+	 * <code>META-INF/p2.inf</code> file (for bundle/plugin projects).
+	 *
+	 * @param project project
+	 * @return <code>META-INF/p2.inf</code> file that may or may not exist
+	 */
+	public static IFile getBundleP2Inf(IProject project) {
+		return getBundleRelativeFile(project, ICoreConstants.P2_INF_BUNDLE_PATH);
+	}
+
+	/**
+	 * Returns the resource in the specified project corresponding to its
+	 * <code>p2.inf</code> file (for feature projects). Feature projects
+	 * have the p2.inf file in the project root, not in META-INF.
+	 *
+	 * @param project project
+	 * @return <code>p2.inf</code> file that may or may not exist
+	 */
+	public static IFile getFeatureP2Inf(IProject project) {
+		return getBundleRelativeFile(project, ICoreConstants.P2_INF_FEATURE_PATH);
+	}
+
+	/**
 	 * Returns a file relative to the bundle root of the specified project.
 	 *
 	 * @param project project
