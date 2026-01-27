@@ -86,13 +86,16 @@ public class P2InfInputContext extends InputContext {
 
 	@Override
 	protected void addTextEditOperation(ArrayList<TextEdit> ops, IModelChangedEvent event) {
-		// Text edit operations are handled by the document directly
-		// No special processing needed for basic source editing
+		// P2InfModel is a simple document-based model that doesn't track individual
+		// model changes. The document is the source of truth and changes are made
+		// directly to it by the source editor. This is intentional as p2.inf files
+		// are simple properties files without complex model-to-document synchronization
+		// requirements, similar to how BndInputContext handles this.
 	}
 
 	@Override
 	public void doRevert() {
-		// Revert to the saved version
+		// Revert to the saved version by reloading the model from the document
 		P2InfModel model = getModel();
 		if (model != null) {
 			model.load();

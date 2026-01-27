@@ -339,7 +339,8 @@ public class ManifestEditor extends PDELauncherFormEditor implements IShowEditor
 			// p2.inf file added - check if it's in META-INF folder (for bundles)
 			if (!fInputContextManager.hasContext(P2InfInputContext.CONTEXT_ID)) {
 				IContainer parent = file.getParent();
-				if (parent != null && ICoreConstants.MANIFEST_FOLDER_NAME.equals(parent.getName() + "/")) { //$NON-NLS-1$
+				// MANIFEST_FOLDER_NAME is "META-INF/" - compare with folder name + "/"
+				if (parent != null && "META-INF".equals(parent.getName())) { //$NON-NLS-1$
 					IEditorInput in = new FileEditorInput(file);
 					fInputContextManager.putContext(in, new P2InfInputContext(this, in, false));
 				}
