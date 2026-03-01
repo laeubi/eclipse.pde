@@ -54,6 +54,7 @@ public class WorkspaceSetupExtension implements BeforeAllCallback, AfterAllCallb
 		Job wsJob = new WorkspaceJob("Test Workspace Setup") {
 			@Override
 			public IStatus runInWorkspace(IProgressMonitor m) throws CoreException {
+				// Per project: create(1) + open(1) + 3*(build(2) + refresh(1)) = 11
 				SubMonitor monitor = SubMonitor.convert(m, PROJECTS.size() * 11);
 				// import test projects
 				Path wsRoot = ws.getRoot().getLocation().toPath();
@@ -73,7 +74,7 @@ public class WorkspaceSetupExtension implements BeforeAllCallback, AfterAllCallb
 					}
 					project.create(monitor.split(1));
 					project.open(monitor.split(1));
-					for (int i = 0; i < 3; i++) { // Build multiple times as setup can be unstable
+					for (int i = 0; i < 3; i++) { // Annotation processor may need multiple builds to generate all outputs
 						project.build(IncrementalProjectBuilder.FULL_BUILD, monitor.split(2));
 						project.refreshLocal(IResource.DEPTH_INFINITE, monitor.split(1));
 					}
