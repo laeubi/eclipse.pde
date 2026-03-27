@@ -57,7 +57,10 @@ import org.eclipse.jdt.core.dom.ImportDeclaration;
 import org.eclipse.jdt.core.dom.Javadoc;
 import org.eclipse.jdt.core.dom.MarkerAnnotation;
 import org.eclipse.jdt.core.dom.MethodDeclaration;
+import org.eclipse.jdt.core.dom.SingleMemberAnnotation;
+import org.eclipse.jdt.core.dom.StringLiteral;
 import org.eclipse.jdt.core.dom.TagElement;
+import org.eclipse.jdt.core.dom.TextElement;
 import org.eclipse.jdt.core.dom.TypeDeclaration;
 import org.eclipse.jdt.core.dom.VariableDeclarationFragment;
 import org.eclipse.jdt.core.dom.rewrite.ASTRewrite;
@@ -496,6 +499,23 @@ public class JavadocConversionRefactoring extends Refactoring {
 		 * Adds any missing annotations and optionally removes any Javadoc tags
 		 */
 		void updateNode(BodyDeclaration body, IApiAnnotations annotations) {
+			Javadoc docnode = body.getJavadoc();
+			
+			// Extract text from Javadoc tags
+			Map<String, String> tagTexts = new HashMap<>();
+			if (docnode != null) {
+				List<TagElement> tags = docnode.tags();
+				for (TagElement tag : tags) {
+					String tagName = tag.getTagName();
+					if (tagName != null && JavadocTagManager.ALL_TAGS.contains(tagName)) {
+						String text = extractTagText(tag);
+						if (text != null && !text.isEmpty()) {
+							tagTexts.put(tagName, text);
+						}
+					}
+				}
+			}
+
 			ListRewrite lrewrite = getListrewrite(body);
 			if (lrewrite != null) {
 				AST ast = body.getAST();
@@ -516,49 +536,89 @@ public class JavadocConversionRefactoring extends Refactoring {
 				}
 				int restrictions = annotations.getRestrictions();
 				if (RestrictionModifiers.isExtendRestriction(restrictions) && !existing.contains(JavadocTagManager.ANNOTATION_NOEXTEND)) {
-					MarkerAnnotation newannot = ast.newMarkerAnnotation();
-					newannot.setTypeName(ast.newName(JavadocTagManager.ANNOTATION_NOEXTEND));
+					Annotation newannot = createAnnotation(ast, JavadocTagManager.ANNOTATION_NOEXTEND, tagTexts.get(JavadocTagManager.TAG_NOEXTEND));
 					lrewrite.insertFirst(newannot, null);
 					ensureImport(JavadocTagManager.ANNOTATION_NOEXTEND);
 				}
 				if (RestrictionModifiers.isImplementRestriction(restrictions) && !existing.contains(JavadocTagManager.ANNOTATION_NOIMPLEMENT)) {
-					MarkerAnnotation newannot = ast.newMarkerAnnotation();
-					newannot.setTypeName(ast.newName(JavadocTagManager.ANNOTATION_NOIMPLEMENT));
+					Annotation newannot = createAnnotation(ast, JavadocTagManager.ANNOTATION_NOIMPLEMENT, tagTexts.get(JavadocTagManager.TAG_NOIMPLEMENT));
 					lrewrite.insertFirst(newannot, null);
 					ensureImport(JavadocTagManager.ANNOTATION_NOIMPLEMENT);
 				}
 				if (RestrictionModifiers.isInstantiateRestriction(restrictions) && !existing.contains(JavadocTagManager.ANNOTATION_NOINSTANTIATE)) {
-					MarkerAnnotation newannot = ast.newMarkerAnnotation();
-					newannot.setTypeName(ast.newName(JavadocTagManager.ANNOTATION_NOINSTANTIATE));
+					Annotation newannot = createAnnotation(ast, JavadocTagManager.ANNOTATION_NOINSTANTIATE, tagTexts.get(JavadocTagManager.TAG_NOINSTANTIATE));
 					lrewrite.insertFirst(newannot, null);
 					ensureImport(JavadocTagManager.ANNOTATION_NOINSTANTIATE);
 				}
 				if (RestrictionModifiers.isOverrideRestriction(restrictions) && !existing.contains(JavadocTagManager.ANNOTATION_NOOVERRIDE)) {
-					MarkerAnnotation newannot = ast.newMarkerAnnotation();
-					newannot.setTypeName(ast.newName(JavadocTagManager.ANNOTATION_NOOVERRIDE));
+					Annotation newannot = createAnnotation(ast, JavadocTagManager.ANNOTATION_NOOVERRIDE, tagTexts.get(JavadocTagManager.TAG_NOOVERRIDE));
 					lrewrite.insertFirst(newannot, null);
 					ensureImport(JavadocTagManager.ANNOTATION_NOOVERRIDE);
 				}
 				if (RestrictionModifiers.isReferenceRestriction(restrictions) && !existing.contains(JavadocTagManager.ANNOTATION_NOREFERENCE)) {
-					MarkerAnnotation newannot = ast.newMarkerAnnotation();
-					newannot.setTypeName(ast.newName(JavadocTagManager.ANNOTATION_NOREFERENCE));
+					Annotation newannot = createAnnotation(ast, JavadocTagManager.ANNOTATION_NOREFERENCE, tagTexts.get(JavadocTagManager.TAG_NOREFERENCE));
 					lrewrite.insertFirst(newannot, null);
 					ensureImport(JavadocTagManager.ANNOTATION_NOREFERENCE);
 				}
 			}
-			if (this.remove) {
-				// get rid of all API tools tags if the use says so
-				Javadoc docnode = body.getJavadoc();
-				if (docnode != null) {
-					List<TagElement> tags = docnode.tags();
-					lrewrite = rewrite.getListRewrite(docnode, Javadoc.TAGS_PROPERTY);
-					for (TagElement tag : tags) {
-						String tagName = tag.getTagName();
-						if (tagName != null && JavadocTagManager.ALL_TAGS.contains(tagName)) {
-							lrewrite.remove(tag, null);
-						}
+			
+			// Remove Javadoc tags if requested
+			if (this.remove && docnode != null) {
+				List<TagElement> tags = docnode.tags();
+				lrewrite = rewrite.getListRewrite(docnode, Javadoc.TAGS_PROPERTY);
+				for (TagElement tag : tags) {
+					String tagName = tag.getTagName();
+					if (tagName != null && JavadocTagManager.ALL_TAGS.contains(tagName)) {
+						lrewrite.remove(tag, null);
 					}
 				}
+			}
+		}
+
+		/**
+		 * Extracts the text content from a Javadoc tag element.
+		 *
+		 * @param tag the tag element to extract text from
+		 * @return the extracted text, or null if no text is found
+		 */
+		private String extractTagText(TagElement tag) {
+			List<ASTNode> fragments = tag.fragments();
+			if (fragments.isEmpty()) {
+				return null;
+			}
+			StringBuilder text = new StringBuilder();
+			for (ASTNode fragment : fragments) {
+				if (fragment instanceof TextElement) {
+					String fragmentText = ((TextElement) fragment).getText();
+					if (text.length() > 0) {
+						text.append(' ');
+					}
+					text.append(fragmentText);
+				}
+			}
+			return text.toString().trim();
+		}
+
+		/**
+		 * Creates an annotation with the given name and optional text value.
+		 *
+		 * @param ast the AST to use for creating nodes
+		 * @param annotationName the simple name of the annotation
+		 * @param text the text to include as the annotation value, or null for no value
+		 * @return the created annotation
+		 */
+		private Annotation createAnnotation(AST ast, String annotationName, String text) {
+			if (text != null && !text.isEmpty()) {
+				SingleMemberAnnotation annot = ast.newSingleMemberAnnotation();
+				annot.setTypeName(ast.newName(annotationName));
+				StringLiteral literal = ast.newStringLiteral();
+				literal.setLiteralValue(text);
+				annot.setValue(literal);
+				return annot;
+			} else {
+				MarkerAnnotation annot = ast.newMarkerAnnotation();
+				annot.setTypeName(ast.newName(annotationName));
+				return annot;
 			}
 		}
 
