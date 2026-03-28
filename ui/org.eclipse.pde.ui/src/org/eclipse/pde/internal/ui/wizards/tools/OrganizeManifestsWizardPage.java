@@ -61,6 +61,7 @@ public class OrganizeManifestsWizardPage extends UserInputWizardPage implements 
 	private Button fRemovedUnusedKeys;
 	private Button fRemoveLazy;
 	private Button fRemoveUselessFiles;
+	private Button fRemoveUnusedFilters;
 
 	private Button[] fTopLevelButtons; // used for setting page complete state
 
@@ -203,6 +204,9 @@ public class OrganizeManifestsWizardPage extends UserInputWizardPage implements 
 		fRemoveUselessFiles = new Button(group, SWT.CHECK);
 		fRemoveUselessFiles.setText(PDEUIMessages.OrganizeManifestsWizardPage_uselessPluginFile);
 
+		fRemoveUnusedFilters = new Button(group, SWT.CHECK);
+		fRemoveUnusedFilters.setText(PDEUIMessages.OrganizeManifestsWizardPage_removeUnusedFilters);
+
 	}
 
 	private void createNLSGroup(Composite container) {
@@ -278,6 +282,10 @@ public class OrganizeManifestsWizardPage extends UserInputWizardPage implements 
 		fRemovedUnusedKeys.setSelection(selection);
 		fProcessor.setUnusedKeys(selection);
 
+		selection = settings.getBoolean(PROP_REMOVE_UNUSED_FILTERS);
+		fRemoveUnusedFilters.setSelection(selection);
+		fProcessor.setRemoveUnusedFilters(selection);
+
 		setEnabledStates();
 		setPageComplete();
 	}
@@ -302,6 +310,7 @@ public class OrganizeManifestsWizardPage extends UserInputWizardPage implements 
 
 		settings.put(PROP_NLS_PATH, fFixIconNLSPaths.getSelection());
 		settings.put(PROP_UNUSED_KEYS, fRemovedUnusedKeys.getSelection());
+		settings.put(PROP_REMOVE_UNUSED_FILTERS, fRemoveUnusedFilters.getSelection());
 	}
 
 	private void setEnabledStates() {
@@ -318,7 +327,7 @@ public class OrganizeManifestsWizardPage extends UserInputWizardPage implements 
 	private void setButtonArrays() {
 		fTopLevelButtons = new Button[] { fRemoveUnresolved, fAddMissing, fModifyDependencies, fMarkInternal,
 				fUnusedDependencies, fAdditonalDependencies, fComputeImportPackages, fFixIconNLSPaths,
-				fRemovedUnusedKeys, fRemoveLazy, fRemoveUselessFiles, fCalculateUses };
+				fRemovedUnusedKeys, fRemoveLazy, fRemoveUselessFiles, fCalculateUses, fRemoveUnusedFilters };
 	}
 
 	private void setPageComplete() {
@@ -380,6 +389,8 @@ public class OrganizeManifestsWizardPage extends UserInputWizardPage implements 
 			fProcessor.setPrefixIconNL(fFixIconNLSPaths.getSelection());
 		} else if (fRemovedUnusedKeys.equals(source)) {
 			fProcessor.setUnusedKeys(fRemovedUnusedKeys.getSelection());
+		} else if (fRemoveUnusedFilters.equals(source)) {
+			fProcessor.setRemoveUnusedFilters(fRemoveUnusedFilters.getSelection());
 		}
 	}
 

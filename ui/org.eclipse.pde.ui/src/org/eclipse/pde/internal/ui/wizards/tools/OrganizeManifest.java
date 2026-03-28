@@ -33,9 +33,13 @@ import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.IWorkspaceRoot;
 import org.eclipse.core.resources.ProjectScope;
 import org.eclipse.core.runtime.CoreException;
+import org.eclipse.core.runtime.IConfigurationElement;
+import org.eclipse.core.runtime.IExtensionRegistry;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.core.runtime.Platform;
 import org.eclipse.core.runtime.Status;
+import org.eclipse.core.runtime.SubMonitor;
 import org.eclipse.core.runtime.preferences.IEclipsePreferences;
 import org.eclipse.jdt.core.IClasspathEntry;
 import org.eclipse.jdt.core.IJavaElement;
@@ -664,6 +668,33 @@ public class OrganizeManifest implements IOrganizeManifestsSettings {
 		MultiTextEdit multiEdit = new MultiTextEdit();
 		multiEdit.addChildren(edits);
 		return multiEdit;
+	}
+
+	/**
+	 * Invokes all registered Organize Manifest participants to perform additional cleanup.
+	 * 
+	 * @param project the project to clean up
+	 * @param monitor progress monitor
+	 */
+	public static void runOrganizeManifestParticipants(IProject project, IProgressMonitor monitor) {
+		IExtensionRegistry registry = Platform.getExtensionRegistry();
+		IConfigurationElement[] elements = registry.getConfigurationElementsFor("org.eclipse.pde.ui.organizeManifestParticipants"); //$NON-NLS-1$
+		
+		SubMonitor subMonitor = SubMonitor.convert(monitor, elements.length);
+		
+		for (IConfigurationElement element : elements) {
+			if (subMonitor.isCanceled()) {
+				break;
+			}
+			try {
+				IOrganizeManifestParticipant participant = (IOrganizeManifestParticipant) element.createExecutableExtension("class"); //$NON-NLS-1$
+				if (participant.isEnabled()) {
+					participant.cleanup(project, subMonitor.split(1));
+				}
+			} catch (CoreException e) {
+				PDECore.log(e);
+			}
+		}
 	}
 
 }

@@ -3047,6 +3047,10 @@ public class PDEUIMessages extends NLS {
 
 	public static String OrganizeManifestsWizardPage_removeUnusedKeys;
 
+	public static String OrganizeManifestsWizardPage_removeUnusedFilters;
+
+	public static String OrganizeManifestsOperation_unusedFilters;
+
 	public static String TargetPlatformPreferencePage_LoadDefaultTarget;
 
 	public static String TargetPlatformPreferencePage2_0;

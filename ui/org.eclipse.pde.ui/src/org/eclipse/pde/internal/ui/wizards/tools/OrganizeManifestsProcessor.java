@@ -73,6 +73,7 @@ public class OrganizeManifestsProcessor extends RefactoringProcessor implements 
 											// <bundle-localization>.properties
 											// keys
 	protected boolean fAddDependencies = false;
+	protected boolean fRemoveUnusedFilters = false; // remove unused API filters
 
 	List<IProject> fProjectList;
 	private IProject fCurrentProject;
@@ -264,6 +265,12 @@ public class OrganizeManifestsProcessor extends RefactoringProcessor implements 
 			}
 			subMonitor.worked(1);
 		}
+		if (fRemoveUnusedFilters) {
+			subMonitor.subTask(NLS.bind(PDEUIMessages.OrganizeManifestsOperation_unusedFilters, projectName));
+			if (!subMonitor.isCanceled()) {
+				OrganizeManifest.runOrganizeManifestParticipants(fCurrentProject, subMonitor.split(1));
+			}
+		}
 		if (fComputeImports) {
 			OrganizeManifest.computeImportPackages(modelBase, fCurrentProject, subMonitor.split(1));
 		}
@@ -350,5 +357,9 @@ public class OrganizeManifestsProcessor extends RefactoringProcessor implements 
 
 	public void setComputeImports(boolean computeImports) {
 		this.fComputeImports = computeImports;
+	}
+
+	public void setRemoveUnusedFilters(boolean removeUnusedFilters) {
+		fRemoveUnusedFilters = removeUnusedFilters;
 	}
 }
