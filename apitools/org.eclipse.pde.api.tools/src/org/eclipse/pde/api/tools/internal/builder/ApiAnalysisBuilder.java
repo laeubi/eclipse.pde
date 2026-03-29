@@ -1150,7 +1150,7 @@ public class ApiAnalysisBuilder extends IncrementalProjectBuilder {
 		if (resourcePath == null) {
 			return null;
 		}
-		IResource resource = currentproject.findMember(IPath.fromOSString(resourcePath));
+		IResource resource = currentproject.findMember(IPath.fromPortableString(resourcePath));
 		if (resource == null) {
 			// might be re-exported try to look it up
 			IJavaProject jp = JavaCore.create(currentproject);

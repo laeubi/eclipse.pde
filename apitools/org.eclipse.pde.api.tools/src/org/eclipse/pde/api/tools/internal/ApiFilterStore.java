@@ -188,7 +188,7 @@ public class ApiFilterStore extends FilterStore implements IResourceChangeListen
 			if (resourcePath == null) {
 				continue;
 			}
-			IResource resource = fProject.getProject().findMember(IPath.fromOSString(resourcePath));
+			IResource resource = fProject.getProject().findMember(IPath.fromPortableString(resourcePath));
 			if (resource == null) {
 				continue;
 			}
@@ -247,7 +247,7 @@ public class ApiFilterStore extends FilterStore implements IResourceChangeListen
 		if (resourcePath == null) {
 			return false;
 		}
-		IResource resource = fProject.getProject().findMember(IPath.fromOSString(resourcePath));
+		IResource resource = fProject.getProject().findMember(IPath.fromPortableString(resourcePath));
 		if (resource == null) {
 			if (ApiPlugin.DEBUG_FILTER_STORE) {
 				System.out.println("no resource exists: [" + resourcePath + "]"); //$NON-NLS-1$ //$NON-NLS-2$
@@ -317,7 +317,7 @@ public class ApiFilterStore extends FilterStore implements IResourceChangeListen
 			if (resourcePath == null) {
 				continue;
 			}
-			IResource resource = fProject.getProject().findMember(IPath.fromOSString(resourcePath));
+			IResource resource = fProject.getProject().findMember(IPath.fromPortableString(resourcePath));
 			if (resource == null) {
 				resource = fProject.getProject().getFile(resourcePath);
 			}
@@ -499,7 +499,7 @@ public class ApiFilterStore extends FilterStore implements IResourceChangeListen
 			if (resourcePath == null) {
 				continue;
 			}
-			IResource resource = fProject.getProject().findMember(IPath.fromOSString(resourcePath));
+			IResource resource = fProject.getProject().findMember(IPath.fromPortableString(resourcePath));
 			if (resource == null) {
 				continue;
 			}
