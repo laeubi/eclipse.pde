@@ -196,6 +196,22 @@ public class P2TargetUtils {
 	private static final Map<ITargetDefinition, P2TargetUtils> SYNCHRONIZERS = new WeakHashMap<>();
 
 	/**
+	 * Locks for profile operations, keyed by profile ID. This ensures that operations
+	 * on the same profile (which can be shared by multiple ITargetDefinition instances)
+	 * are properly synchronized to prevent timestamp conflicts.
+	 * <p>
+	 * Lock objects persist for the lifetime of the application, which is acceptable because:
+	 * <ul>
+	 * <li>Profile IDs are based on stable target file paths</li>
+	 * <li>The number of unique target files used in a session is typically small</li>
+	 * <li>Lock objects have minimal memory footprint</li>
+	 * <li>Removing locks would introduce complexity and potential race conditions</li>
+	 * </ul>
+	 * </p>
+	 */
+	private static final ConcurrentHashMap<String, Object> PROFILE_LOCKS = new ConcurrentHashMap<>();
+
+	/**
 	 * Table mapping of  ITargetDefinition and IFileArtifactRepository
 	 */
 	static final Map<ITargetDefinition, IFileArtifactRepository> fgTargetArtifactRepo = new ConcurrentHashMap<>();
@@ -800,6 +816,41 @@ public class P2TargetUtils {
 	}
 
 	/**
+	 * Gets or creates a lock object for the given profile ID. This ensures that
+	 * operations on the same profile (which can be shared by multiple ITargetDefinition
+	 * instances) are properly synchronized.
+	 * <p>
+	 * Note: Lock objects accumulate in memory but this is acceptable since profile IDs
+	 * are based on stable target file paths and the lock objects are small.
+	 * </p>
+	 *
+	 * @param profileId the profile identifier
+	 * @return a lock object for the profile
+	 */
+	private static Object getProfileLock(String profileId) {
+		return PROFILE_LOCKS.computeIfAbsent(profileId, k -> new Object());
+	}
+
+	/**
+	 * Refreshes a profile from the registry after operations that modify it.
+	 * The P2 engine creates new profile snapshots with updated timestamps during
+	 * provisioning operations, so the in-memory profile reference must be refreshed.
+	 *
+	 * @param profile the current profile reference (may have outdated timestamp)
+	 * @param target the target definition (used only for error messages)
+	 * @return the refreshed profile from the registry
+	 * @throws CoreException if the profile was removed or cannot be loaded
+	 */
+	private IProfile refreshProfile(IProfile profile, ITargetDefinition target) throws CoreException {
+		String profileId = profile.getProfileId();
+		IProfile refreshed = getProfileRegistry().getProfile(profileId);
+		if (refreshed == null) {
+			throw new CoreException(Status.error("Profile was removed: " + profileId)); //$NON-NLS-1$
+		}
+		return refreshed;
+	}
+
+	/**
 	 * Synchronize the profile and the target definition managed by this synchronizer.  On return the profile will
 	 * be resolved and correctly match the given target.  The IUBundleContainers associated with
 	 * the target will be notified of any changes in the underlying p2 profile and given an
@@ -807,13 +858,30 @@ public class P2TargetUtils {
 	 *
 	 * NOTE: this is a potentially *very* heavyweight operation.
 	 *
-	 * NOTE: this method is synchronized as it is effectively a "test and set" caching method. Two
-	 * threads getting the profile at the same time should not execute concurrently or the profiles
-	 * will get out of sync.
+	 * NOTE: this method uses two levels of synchronization:
+	 * <ul>
+	 * <li>Instance-level (synchronized method): Protects this P2TargetUtils instance's state (fProfile, etc.)</li>
+	 * <li>Profile-level (profile ID lock): Prevents concurrent access to the same P2 profile from different
+	 * P2TargetUtils instances, which can occur when multiple ITargetDefinition objects refer to the same
+	 * target file and thus share a profile ID</li>
+	 * </ul>
 	 *
 	 * @throws CoreException if there was a problem synchronizing
 	 */
 	public synchronized void synchronize(ITargetDefinition target, IProgressMonitor monitor) throws CoreException {
+		// Additional synchronization on the profile ID to prevent race conditions when
+		// multiple ITargetDefinition instances (with different P2TargetUtils instances)
+		// share the same profile ID based on the target file path
+		String profileId = getProfileId(target);
+		synchronized (getProfileLock(profileId)) {
+			synchronizeInternal(target, monitor);
+		}
+	}
+
+	/**
+	 * Internal implementation of synchronize that runs within both instance and profile locks.
+	 */
+	private void synchronizeInternal(ITargetDefinition target, IProgressMonitor monitor) throws CoreException {
 		SubMonitor progress = SubMonitor.convert(monitor, 100);
 		IProfile profile = getProfile();
 		// Happiness if we have a profile and it checks out or if we can load one and it checks out.
@@ -845,6 +913,8 @@ public class P2TargetUtils {
 			} else {
 				resolveWithSlicer(target, profile, progress.split(60));
 			}
+			// Refresh the profile from registry as resolve operations may have updated it
+			profile = refreshProfile(profile, target);
 			fProfile = profile;
 			// If we are updating a profile then delete the old snapshot on success.
 			notify(target, progress.split(15));
@@ -1183,6 +1253,10 @@ public class P2TargetUtils {
 		if (result.getSeverity() == IStatus.ERROR || result.getSeverity() == IStatus.CANCEL) {
 			throw new CoreException(result);
 		}
+
+		// Refresh the profile from the registry after perform, as the perform operation
+		// creates a new profile snapshot with an updated timestamp
+		profile = refreshProfile(profile, target);
 
 		// Now that we have a plan with all the binary and explicit bundles, do a second pass and add
 		// in all the source.
