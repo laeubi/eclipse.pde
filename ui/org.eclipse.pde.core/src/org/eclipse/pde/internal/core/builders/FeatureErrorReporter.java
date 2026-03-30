@@ -42,7 +42,7 @@ public class FeatureErrorReporter extends ManifestErrorReporter {
 
 	static String[] attrNames = { "id", "version", "include-sources", "label", "provider-name", "image", "os", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$ //$NON-NLS-7$
 			"ws", "arch", "nl", "colocation-affinity", "primary", "exclusive", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$
-			"plugin", "application", "license-feature", "license-feature-version"}; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+			"plugin", "application", "license-feature", "license-feature-version", "deprecated"}; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$
 
 	private IProgressMonitor fMonitor;
 

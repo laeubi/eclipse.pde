@@ -59,6 +59,7 @@ public class Feature extends VersionableObject implements IFeature {
 	private String fLicenseFeatureID;
 	private String fLicenseFeatureVersion;
 	private boolean fIncludeSources;
+	private String fDeprecated;
 
 	@Override
 	public void addPlugins(IFeaturePlugin[] newPlugins) throws CoreException {
@@ -215,6 +216,7 @@ public class Feature extends VersionableObject implements IFeature {
 		fPrimary = getBooleanAttribute(node, "primary"); //$NON-NLS-1$
 		fExclusive = getBooleanAttribute(node, "exclusive"); //$NON-NLS-1$
 		fIncludeSources = getBooleanAttribute(node, "include-sources"); //$NON-NLS-1$
+		fDeprecated = getNodeAttribute(node, "deprecated"); //$NON-NLS-1$
 		NodeList children = node.getChildNodes();
 		fValid = true;
 
@@ -457,6 +459,19 @@ public class Feature extends VersionableObject implements IFeature {
 	}
 
 	@Override
+	public String getDeprecated() {
+		return fDeprecated;
+	}
+
+	@Override
+	public void setDeprecated(String deprecated) throws CoreException {
+		ensureModelEditable();
+		Object oldValue = this.fDeprecated;
+		this.fDeprecated = deprecated;
+		firePropertyChanged(P_DEPRECATED, oldValue, deprecated);
+	}
+
+	@Override
 	public void setProviderName(String providerName) throws CoreException {
 		ensureModelEditable();
 		Object oldValue = this.fProviderName;
@@ -587,6 +602,9 @@ public class Feature extends VersionableObject implements IFeature {
 		case P_SOURCES:
 			setIncludingSources(newValue != null ? ((Boolean) newValue).booleanValue() : false);
 			break;
+		case P_DEPRECATED:
+			setDeprecated((String) newValue);
+			break;
 		default:
 			super.restoreProperty(name, oldValue, newValue);
 			break;
@@ -615,6 +633,7 @@ public class Feature extends VersionableObject implements IFeature {
 		fExclusive = false;
 		fColocationAffinity = null;
 		fApplication = null;
+		fDeprecated = null;
 		fValid = false;
 	}
 
@@ -701,6 +720,7 @@ public class Feature extends VersionableObject implements IFeature {
 			writer.println();
 			writer.print(indenta + "exclusive=\"true\""); //$NON-NLS-1$
 		}
+		writeIfDefined(indenta, writer, "deprecated", fDeprecated); //$NON-NLS-1$
 		writeIfDefined(indenta, writer, "colocation-affinity", fColocationAffinity); //$NON-NLS-1$
 		writeIfDefined(indenta, writer, "application", fApplication); //$NON-NLS-1$
 
