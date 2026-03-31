@@ -148,6 +148,8 @@ public class LaunchingPreferencePage extends PreferencePage implements IWorkbenc
 
 	private Button fAddSwtNonDisposalReporting;
 
+	private Button fSearchRepositoriesForSource;
+
 	private Text fRuntimeWorkspaceLocation;
 	private Button fRuntimeWorkspaceLocationRadio;
 	private Button fRuntimeWorkspacesContainerRadio;
@@ -187,6 +189,11 @@ public class LaunchingPreferencePage extends PreferencePage implements IWorkbenc
 				.setToolTipText(PDEUIMessages.MainPreferencePage_AddSwtNonDisposedToVMArgumentsToolTop);
 		fAddSwtNonDisposalReporting
 				.setSelection(launchingStore.getBoolean(ILaunchingPreferenceConstants.ADD_SWT_NON_DISPOSAL_REPORTING));
+
+		fSearchRepositoriesForSource = new Button(optionComp, SWT.CHECK);
+		fSearchRepositoriesForSource.setText(PDEUIMessages.LaunchingPreferencePage_searchRepositoriesForSource);
+		fSearchRepositoriesForSource
+				.setSelection(launchingStore.getBoolean(ILaunchingPreferenceConstants.PROP_SEARCH_REPOSITORIES_FOR_SOURCE));
 
 		new DefaultRuntimeWorkspaceBlock().createControl(composite);
 		fRuntimeWorkspaceLocation
@@ -250,6 +257,8 @@ public class LaunchingPreferencePage extends PreferencePage implements IWorkbenc
 				fJunitAutoValidate.getSelection());
 		launchingStore.setValueOrRemove(ILaunchingPreferenceConstants.ADD_SWT_NON_DISPOSAL_REPORTING,
 				fAddSwtNonDisposalReporting.getSelection());
+		launchingStore.setValueOrRemove(ILaunchingPreferenceConstants.PROP_SEARCH_REPOSITORIES_FOR_SOURCE,
+				fSearchRepositoriesForSource.getSelection());
 		try {
 			launchingStore.flush();
 		} catch (BackingStoreException e) {
@@ -287,6 +296,8 @@ public class LaunchingPreferencePage extends PreferencePage implements IWorkbenc
 				launchingStore.getDefaultBoolean(ILaunchingPreferenceConstants.PROP_JUNIT_ADD_NEW_WORKSPACE_PLUGINS));
 		fJunitAutoValidate.setSelection(
 				launchingStore.getDefaultBoolean(ILaunchingPreferenceConstants.PROP_JUNIT_VALIDATE_LAUNCH));
+		fSearchRepositoriesForSource.setSelection(
+				launchingStore.getDefaultBoolean(ILaunchingPreferenceConstants.PROP_SEARCH_REPOSITORIES_FOR_SOURCE));
 	}
 
 	@Override

@@ -282,4 +282,21 @@ public class PDESourceLookupDirector extends AbstractSourceLookupDirector {
 		return fOSGiRuntimeVersion;
 	}
 
+	/**
+	 * Searches for source in P2 repositories as a fallback.
+	 * This has lower priority than workspace and target platform sources.
+	 *
+	 * @param bundleId the symbolic name of the bundle
+	 * @param typeName the qualified name of the source type
+	 * @return source element or <code>null</code>
+	 */
+	Object findSourceInRepositories(String bundleId, String typeName) throws CoreException {
+		RepositorySourceContainer container = new RepositorySourceContainer(bundleId);
+		Object[] result = container.findSourceElements(typeName);
+		if (result != null && result.length > 0) {
+			return result[0];
+		}
+		return null;
+	}
+
 }

@@ -2721,6 +2721,8 @@ public class PDEUIMessages extends NLS {
 
 	public static String LaunchingPreferencePage_description;
 
+	public static String LaunchingPreferencePage_searchRepositoriesForSource;
+
 	public static String RemoveLazyLoadingDirectiveResolution_remove;
 
 	public static String RemoveAutomaticModuleResolution_remove;
