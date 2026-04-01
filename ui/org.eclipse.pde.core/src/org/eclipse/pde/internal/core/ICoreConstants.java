@@ -312,6 +312,12 @@ public interface ICoreConstants {
 	String OSGI_INF_FOLDER_NAME = "OSGI-INF/"; //$NON-NLS-1$
 	String FEATURE_FOLDER_NAME = "features"; //$NON-NLS-1$
 
+	/** Constant for the string <code>p2.inf</code> - the p2 advice file name */
+	String P2_INF_FILENAME = "p2.inf"; //$NON-NLS-1$
+
+	/** Constant for the string <code>META-INF/p2.inf</code> - p2 advice file in plugin projects */
+	String P2_INF_BUNDLE_DESCRIPTOR = "META-INF/p2.inf"; //$NON-NLS-1$
+
 	// Common paths
 	IPath MANIFEST_PATH = IPath.fromOSString(BUNDLE_FILENAME_DESCRIPTOR);
 	IPath PLUGIN_PATH = IPath.fromOSString(PLUGIN_FILENAME_DESCRIPTOR);
@@ -319,6 +325,10 @@ public interface ICoreConstants {
 	IPath FEATURE_PATH = IPath.fromOSString(FEATURE_FILENAME_DESCRIPTOR);
 	IPath BUILD_PROPERTIES_PATH = IPath.fromOSString(BUILD_FILENAME_DESCRIPTOR);
 	IPath OSGI_INF_PATH = IPath.fromOSString(OSGI_INF_FOLDER_NAME);
+	/** Path to p2.inf for plugin projects (META-INF/p2.inf) */
+	IPath P2_INF_BUNDLE_PATH = IPath.fromOSString(P2_INF_BUNDLE_DESCRIPTOR);
+	/** Path to p2.inf for feature projects (p2.inf in root) */
+	IPath P2_INF_FEATURE_PATH = IPath.fromOSString(P2_INF_FILENAME);
 
 	// Extension point identifiers
 	String EXTENSION_POINT_SOURCE = PDECore.PLUGIN_ID + ".source"; //$NON-NLS-1$

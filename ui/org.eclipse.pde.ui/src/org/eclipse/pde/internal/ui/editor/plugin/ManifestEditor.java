@@ -82,6 +82,8 @@ import org.eclipse.pde.internal.ui.editor.build.BuildPage;
 import org.eclipse.pde.internal.ui.editor.build.BuildSourcePage;
 import org.eclipse.pde.internal.ui.editor.context.InputContext;
 import org.eclipse.pde.internal.ui.editor.context.InputContextManager;
+import org.eclipse.pde.internal.ui.editor.p2inf.P2InfInputContext;
+import org.eclipse.pde.internal.ui.editor.p2inf.P2InfSourcePage;
 import org.eclipse.pde.internal.ui.wizards.tools.OrganizeManifestsAction;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.ui.IEditorInput;
@@ -275,6 +277,14 @@ public class ManifestEditor extends PDELauncherFormEditor implements IShowEditor
 		}
 		manager.monitorFile(buildFile);
 
+		// Add p2.inf support for plugin projects (META-INF/p2.inf)
+		IFile p2InfFile = container.getFile(ICoreConstants.P2_INF_BUNDLE_PATH);
+		if (p2InfFile != null && p2InfFile.exists()) {
+			FileEditorInput in = new FileEditorInput(p2InfFile);
+			manager.putContext(in, new P2InfInputContext(this, in, false));
+		}
+		manager.monitorFile(p2InfFile);
+
 		fPrefs = new ProjectScope(container.getProject()).getNode(PDECore.PLUGIN_ID);
 		if (fPrefs != null) {
 			fShowExtensions = fPrefs.getBoolean(ICoreConstants.EXTENSIONS_PROPERTY, true);
@@ -324,6 +334,16 @@ public class ManifestEditor extends PDELauncherFormEditor implements IShowEditor
 			if (!fInputContextManager.hasContext(BndInputContext.CONTEXT_ID)) {
 				IEditorInput in = new FileEditorInput(file);
 				fInputContextManager.putContext(in, new BndInputContext(this, in, false));
+			}
+		} else if (name.equalsIgnoreCase(ICoreConstants.P2_INF_FILENAME)) {
+			// p2.inf file added - check if it's in META-INF folder (for bundles)
+			if (!fInputContextManager.hasContext(P2InfInputContext.CONTEXT_ID)) {
+				IContainer parent = file.getParent();
+				// MANIFEST_FOLDER_NAME is "META-INF/" - compare with folder name + "/"
+				if (parent != null && "META-INF".equals(parent.getName())) { //$NON-NLS-1$
+					IEditorInput in = new FileEditorInput(file);
+					fInputContextManager.putContext(in, new P2InfInputContext(this, in, false));
+				}
 			}
 		}
 	}
@@ -561,6 +581,7 @@ public class ManifestEditor extends PDELauncherFormEditor implements IShowEditor
 		addSourcePage(PluginInputContext.CONTEXT_ID);
 		addSourcePage(BuildInputContext.CONTEXT_ID);
 		addSourcePage(BndInputContext.CONTEXT_ID);
+		addSourcePage(P2InfInputContext.CONTEXT_ID);
 	}
 
 	private boolean isSourcePageID(String pageID) {
@@ -574,6 +595,7 @@ public class ManifestEditor extends PDELauncherFormEditor implements IShowEditor
 			case PluginInputContext.CONTEXT_ID: // plugin.xml
 			case BundleInputContext.CONTEXT_ID: // MANIFEST.MF
 			case BndInputContext.CONTEXT_ID: // bnd instruction
+			case P2InfInputContext.CONTEXT_ID: // p2.inf
 				return true;
 			default:
 				break;
@@ -687,6 +709,9 @@ public class ManifestEditor extends PDELauncherFormEditor implements IShowEditor
 		}
 		if (contextId.equals(BndInputContext.CONTEXT_ID)) {
 			return new BndSourcePage(editor, contextId, title);
+		}
+		if (contextId.equals(P2InfInputContext.CONTEXT_ID)) {
+			return new P2InfSourcePage(editor, contextId, title);
 		}
 		return super.createSourcePage(editor, title, name, contextId);
 	}

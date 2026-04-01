@@ -52,6 +52,8 @@ import org.eclipse.pde.internal.ui.editor.build.BuildPage;
 import org.eclipse.pde.internal.ui.editor.build.BuildSourcePage;
 import org.eclipse.pde.internal.ui.editor.context.InputContext;
 import org.eclipse.pde.internal.ui.editor.context.InputContextManager;
+import org.eclipse.pde.internal.ui.editor.p2inf.P2InfInputContext;
+import org.eclipse.pde.internal.ui.editor.p2inf.P2InfSourcePage;
 import org.eclipse.swt.SWTError;
 import org.eclipse.swt.dnd.RTFTransfer;
 import org.eclipse.swt.dnd.TextTransfer;
@@ -172,8 +174,15 @@ public class FeatureEditor extends MultiSourceEditor implements IShowEditorInput
 			FileEditorInput in = new FileEditorInput(buildFile);
 			manager.putContext(in, new BuildInputContext(this, in, file == buildFile));
 		}
+		// p2.inf for feature projects is in the project root
+		IFile p2InfFile = PDEProject.getFeatureP2Inf(project);
+		if (p2InfFile != null && p2InfFile.exists()) {
+			FileEditorInput in = new FileEditorInput(p2InfFile);
+			manager.putContext(in, new P2InfInputContext(this, in, false));
+		}
 		manager.monitorFile(featureFile);
 		manager.monitorFile(buildFile);
+		manager.monitorFile(p2InfFile);
 	}
 
 	@Override
@@ -199,6 +208,12 @@ public class FeatureEditor extends MultiSourceEditor implements IShowEditorInput
 			if (!fInputContextManager.hasContext(BuildInputContext.CONTEXT_ID)) {
 				IEditorInput in = new FileEditorInput(file);
 				fInputContextManager.putContext(in, new BuildInputContext(this, in, false));
+			}
+		} else if (name.equalsIgnoreCase(ICoreConstants.P2_INF_FILENAME)) {
+			// p2.inf added at feature project root
+			if (!fInputContextManager.hasContext(P2InfInputContext.CONTEXT_ID)) {
+				IEditorInput in = new FileEditorInput(file);
+				fInputContextManager.putContext(in, new P2InfInputContext(this, in, false));
 			}
 		}
 	}
@@ -254,6 +269,13 @@ public class FeatureEditor extends MultiSourceEditor implements IShowEditorInput
 				IEditorInput in = new FileStoreEditorInput(store);
 				manager.putContext(in, new BuildInputContext(this, in, file == buildFile));
 			}
+			// p2.inf for feature projects is in the project root
+			File p2InfFile = new File(file.getParentFile(), ICoreConstants.P2_INF_FILENAME);
+			if (p2InfFile.exists()) {
+				IFileStore store = EFS.getStore(p2InfFile.toURI());
+				IEditorInput in = new FileStoreEditorInput(store);
+				manager.putContext(in, new P2InfInputContext(this, in, false));
+			}
 		} catch (CoreException e) {
 			PDEPlugin.logException(e);
 		}
@@ -298,6 +320,7 @@ public class FeatureEditor extends MultiSourceEditor implements IShowEditorInput
 		}
 		addSourcePage(FeatureInputContext.CONTEXT_ID);
 		addSourcePage(BuildInputContext.CONTEXT_ID);
+		addSourcePage(P2InfInputContext.CONTEXT_ID);
 	}
 
 	@Override
@@ -322,6 +345,9 @@ public class FeatureEditor extends MultiSourceEditor implements IShowEditorInput
 		}
 		if (contextId.equals(BuildInputContext.CONTEXT_ID)) {
 			return new BuildSourcePage(editor, title, name);
+		}
+		if (contextId.equals(P2InfInputContext.CONTEXT_ID)) {
+			return new P2InfSourcePage(editor, contextId, title);
 		}
 		return super.createSourcePage(editor, title, name, contextId);
 	}
